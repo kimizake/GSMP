@@ -19,7 +19,7 @@ def r(state, event):
 
 
 def p(_s, s, e):
-    if e == Events['arr'] and States.index(_s) == State.index(s) + 1:
+    if e == Events['arr'] and States.index(_s) == States.index(s) + 1:
         return 1
     elif e == Events['com'] and States.index(_s) == States.index(s) - 1:
         return 1

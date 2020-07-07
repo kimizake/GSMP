@@ -1,9 +1,5 @@
 import numpy as np
 
-DISTRIBUTION = {
-    0: np.random.uniform
-}
-
 
 def get_items_from_binary_list(b, l):
     s = str(b)[2:]

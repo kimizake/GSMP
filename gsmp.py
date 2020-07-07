@@ -1,5 +1,4 @@
 import numpy as np
-from functools import reduce
 
 DISTRIBUTION = {
     0: np.random.uniform
@@ -48,7 +47,7 @@ class State:
 class Gsmp:
     def __init__(self, S, E, P, R, F, S_0, F_0):
         """
-        :param S: hashmap of all State objects in simulation
+        :param S: list of all State objects in simulation
         :param E: list of all Event objects in simulation
         :param P: function taking args (s', s, e)
         :param R: function taking args (s, e)
@@ -62,7 +61,7 @@ class Gsmp:
         self.rates = R
         self.clock_distribution = F
 
-        self.current_states = S_0
+        self.current_state = S_0
 
         tmp = convert_sub_list_to_binary([], E)
         self.old_events = tmp
@@ -73,75 +72,73 @@ class Gsmp:
         for _e in get_items_from_binary_list(self.new_events, self.events.values()):
             try:
                 _e.set_clock(F_0(S_0, _e))
-            except TypeError:
+            except ValueError:
                 pass
 
-    def set_current_state(self, new_states):
-        import operator
-        e = reduce(operator.or_, map(lambda s: s.events, self.current_states))
-        e_prime = reduce(operator.or_, map(lambda s: s.events, new_states))
+    def set_current_state(self, new_state):
+        e = self.current_state.events
+        e_prime = new_state.events
         self.old_events = e & e_prime
         self.cancelled_events = e ^ self.old_events
         self.new_events = e_prime ^ self.old_events
         self.active_events = self.old_events | self.new_events
-        self.current_states = new_states
+        self.current_state = new_state
 
-    def set_old_clock(self, old_states, t):
-        old_events = get_items_from_binary_list(self.old_events, self.events.values())
-        for e in old_events:
-            e.clock -= t * self.rates(old_states, e)
+    def set_old_clock(self, s, t):
+        e = get_items_from_binary_list(self.old_events, self.events.values())
+        for _e in e:
+            _e.clock -= t * self.rates(s, e)
 
-    def set_new_clocks(self, old_states, winning_events):
-        new_states = self.current_states
+    def set_new_clocks(self, s, e):
+        _s = self.current_state
         for _e in get_items_from_binary_list(self.new_events, self.events.values()):
             _e.set_clock(
-                self.clock_distribution(new_states, _e, old_states, winning_events)     # We can determine which
+                self.clock_distribution(_s, _e, s, e)
             )
 
     def simulate(self, epochs):
         if epochs > 0:
-            old_states = self.current_states
+            old_state = self.current_state
             active_events = get_items_from_binary_list(self.active_events, self.events.values())
 
             """
-            Determine winning event(s)
-            Note we know if an event exists in multiple 'current states' then the 'winning state' for that event is the 
-            one with the highest rate!
-            Therefore when supplied with a list of states, the probability, rates and distribution functions choose the
-            'winning state'. 
-            TODO: For now assume that there is only one state with a maximum rate, and generalise later...
-            Also note that this means that multiple events can fire at the same time only if they are different events.
+            Determine winning event
             """
-            tmp = [event.clock / self.rates(old_states, event) for event in active_events]
-            event_index = np.where(tmp == np.amin(tmp))[0]
-            winning_events = [active_events[i] for i in event_index]
+            tmp = []
+            for event in active_events:
+                try:
+                    tmp.append(event.clock / self.rates(old_state, event))
+                except ZeroDivisionError:
+                    pass
+                except ValueError:
+                    pass
             time_elapsed = np.amin(tmp)
+            event_index = np.where(tmp == time_elapsed)[0]
+            winning_events = [active_events[i] for i in event_index]
+            winning_event = np.random.choice(winning_events)
 
             """
             Determine next states
             """
-            def pick_new_state(winning_event):
-                rand = np.random.uniform()
-                ps = self.probabilities(self.states.values(), old_states, winning_event)
-                new_state_index = np.max(np.clip(ps, 0, rand))
-                new_state = self.states[new_state_index]
-                return new_state
-            new_states = map(pick_new_state, winning_events)
+            rand = np.random.uniform()
+            ps = self.probabilities(self.states, old_state, winning_event)
+            new_state_index = np.max(np.clip(ps, 0, rand))
+            new_state = self.states[new_state_index]
 
             """
             update state
             """
-            self.set_current_state(new_states)
+            self.set_current_state(new_state)
 
             """
             update old clocks
             """
-            self.set_old_clock(old_states, time_elapsed)
+            self.set_old_clock(old_state, time_elapsed)
 
             """
             update new clocks
             """
-            self.set_new_clocks(old_states, winning_events)
+            self.set_new_clocks(old_state, winning_event)
 
             """
             misc
@@ -149,4 +146,3 @@ class Gsmp:
             ...
 
             return self.simulate(epochs - 1)
-        return self

@@ -66,9 +66,8 @@ class Gsmp:
 
         self.bitmap = BitMap(E)
 
-        tmp = self.bitmap.format([])
-        self.old_events = tmp
-        self.cancelled_events = tmp
+        self.old_events = 0
+        self.cancelled_events = 0
         self.new_events = S_0.events
         self.active_events = S_0.events
 

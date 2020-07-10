@@ -1,32 +1,31 @@
 import numpy as np
-
-
-def get_items_from_binary_list(b, l):
-    s = str(b)[2:]
-    assert len(s) == len(l)
-    return [l[int(i)] for i in s if i == '1']
-
-
-def convert_sub_list_to_binary(s, l):
-    assert set(s).issubset(set(l))
-    s = '0b'
-    s += ['1' if i in s else '0' for i in l]
-    return bin(int(s, 2))
+from bitmap import BitMap
 
 
 class Event:
     def __init__(self, label):
         self.label = label
         self.clock = 0
-        self.active = False
+        self.current_time = 0
 
     def set_clock(self, clock):
         self.clock = clock
+        self.current_time = clock
+
+    def tick_down(self, time):
+        self.current_time -= time
+        self.current_time = self.current_time % self.clock
 
     def __eq__(self, other):
-        if isinstance(self, other):
+        if isinstance(self, type(other)):
             return self.label == other.label
         return False
+
+    def __hash__(self):
+        return hash(self.label)
+
+    def __repr__(self):
+        return self.label
 
 
 class State:
@@ -35,9 +34,15 @@ class State:
         self.events = events
 
     def __eq__(self, other):
-        if isinstance(self, other):
+        if isinstance(self, type(other)):
             return self.label == other.label
         return False
+
+    def __hash__(self):
+        return hash(self.label)
+
+    def __repr__(self):
+        return self.label
 
 
 class Gsmp:
@@ -59,13 +64,15 @@ class Gsmp:
 
         self.current_state = S_0
 
-        tmp = convert_sub_list_to_binary([], E)
+        self.bitmap = BitMap(E)
+
+        tmp = self.bitmap.format([])
         self.old_events = tmp
         self.cancelled_events = tmp
         self.new_events = S_0.events
         self.active_events = S_0.events
 
-        for _e in get_items_from_binary_list(self.new_events, self.events.values()):
+        for _e in self.bitmap.get(self.new_events):
             try:
                 _e.set_clock(F_0(S_0, _e))
             except ValueError:
@@ -74,28 +81,32 @@ class Gsmp:
     def set_current_state(self, new_state):
         e = self.current_state.events
         e_prime = new_state.events
-        self.old_events = e & e_prime
-        self.cancelled_events = e ^ self.old_events
-        self.new_events = e_prime ^ self.old_events
-        self.active_events = self.old_events | self.new_events
+        old_events = e & e_prime
+        new_events = e_prime ^ old_events
+        self.old_events = old_events
+        self.cancelled_events = e ^ old_events
+        self.new_events = new_events
+        self.active_events = old_events | new_events
         self.current_state = new_state
 
-    def set_old_clock(self, s, t):
-        e = get_items_from_binary_list(self.old_events, self.events.values())
-        for _e in e:
-            _e.clock -= t * self.rates(s, e)
+    def set_old_clock(self, s, e, t):
+        for _e in self.bitmap.get(self.old_events):
+            _e.tick_down(t * self.rates(s, e))
 
     def set_new_clocks(self, s, e):
         _s = self.current_state
-        for _e in get_items_from_binary_list(self.new_events, self.events.values()):
-            _e.set_clock(
-                self.clock_distribution(_s, _e, s, e)
-            )
+        for _e in self.bitmap.get(self.new_events):
+            try:
+                _e.set_clock(
+                    self.clock_distribution(_s, _e, s, e)
+                )
+            except ValueError as E:
+                print(E)
 
     def simulate(self, epochs):
         if epochs > 0:
             old_state = self.current_state
-            active_events = get_items_from_binary_list(self.active_events, self.events.values())
+            active_events = self.bitmap.get(self.active_events)
 
             """
             Determine winning event
@@ -103,7 +114,7 @@ class Gsmp:
             tmp = []
             for event in active_events:
                 try:
-                    tmp.append(event.clock / self.rates(old_state, event))
+                    tmp.append(event.current_time / self.rates(old_state, event))
                 except ZeroDivisionError:
                     pass
                 except ValueError:
@@ -114,12 +125,10 @@ class Gsmp:
             winning_event = np.random.choice(winning_events)
 
             """
-            Determine next states
+            Determine next state
             """
-            rand = np.random.uniform()
             ps = self.probabilities(self.states, old_state, winning_event)
-            new_state_index = np.max(np.clip(ps, 0, rand))
-            new_state = self.states[new_state_index]
+            new_state = np.random.choice(self.states, p=ps)
 
             """
             update state
@@ -129,7 +138,7 @@ class Gsmp:
             """
             update old clocks
             """
-            self.set_old_clock(old_state, time_elapsed)
+            self.set_old_clock(old_state, winning_event, time_elapsed)
 
             """
             update new clocks
@@ -139,6 +148,10 @@ class Gsmp:
             """
             misc
             """
-            ...
+
+            """
+            print output
+            """
+            print("s:{0}, \te:{1}, \ts':{2},".format(old_state, winning_event, self.current_state))
 
             return self.simulate(epochs - 1)

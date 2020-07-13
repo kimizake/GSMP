@@ -34,6 +34,7 @@ class State:
     def __init__(self, label, events):
         self.label = label
         self.events = events
+        self.visits = 0
 
     def __eq__(self, other):
         if isinstance(self, type(other)):
@@ -140,6 +141,8 @@ class Gsmp:
             """
             ps = self.probabilities(self.states, old_state, winning_event)
             new_state = np.random.choice(self.states, p=ps)
+
+            new_state.visits += 1
 
             if new_state == self.initial_state:
                 self.set_initial_state()

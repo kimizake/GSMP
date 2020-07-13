@@ -15,6 +15,8 @@ class Event:
     def tick_down(self, time):
         self.current_time -= time
         self.current_time = self.current_time % self.clock
+        if self.current_time == 0:
+            self.current_time = self.clock
 
     def __eq__(self, other):
         if isinstance(self, type(other)):
@@ -62,18 +64,28 @@ class Gsmp:
         self.rates = R
         self.clock_distribution = F
 
+        self.initial_state = S_0
+        self.initial_distribution = F_0
+
         self.current_state = S_0
-
-        self.bitmap = BitMap(E)
-
         self.old_events = 0
         self.cancelled_events = 0
-        self.new_events = S_0.events
-        self.active_events = S_0.events
+        self.new_events = 0
+        self.active_events = 0
+
+        self.bitmap = BitMap(E)
+        self.set_initial_state()
+
+    def set_initial_state(self):
+        self.current_state = self.initial_state
+        self.old_events = 0
+        self.cancelled_events = 0
+        self.new_events = self.initial_state.events
+        self.active_events = self.initial_state.events
 
         for _e in self.bitmap.get(self.new_events):
             try:
-                _e.set_clock(F_0(S_0, _e))
+                _e.set_clock(self.initial_distribution(self.initial_state, _e))
             except ValueError:
                 pass
 
@@ -129,24 +141,12 @@ class Gsmp:
             ps = self.probabilities(self.states, old_state, winning_event)
             new_state = np.random.choice(self.states, p=ps)
 
-            """
-            update state
-            """
-            self.set_current_state(new_state)
-
-            """
-            update old clocks
-            """
-            self.set_old_clock(old_state, winning_event, time_elapsed)
-
-            """
-            update new clocks
-            """
-            self.set_new_clocks(old_state, winning_event)
-
-            """
-            misc
-            """
+            if new_state == self.initial_state:
+                self.set_initial_state()
+            else:
+                self.set_current_state(new_state)
+                self.set_old_clock(old_state, winning_event, time_elapsed)
+                self.set_new_clocks(old_state, winning_event)
 
             """
             print output

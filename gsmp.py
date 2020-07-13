@@ -116,7 +116,7 @@ class Gsmp:
                 print(E)
 
     def simulate(self, epochs):
-        if epochs > 0:
+        while epochs > 0:
             old_state = self.current_state
             active_events = self.bitmap.get(self.active_events)
 
@@ -156,4 +156,4 @@ class Gsmp:
             """
             print("s:{0}, \te:{1}, \ts':{2},".format(old_state, winning_event, self.current_state))
 
-            return self.simulate(epochs - 1)
+            epochs -= 1

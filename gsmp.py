@@ -154,6 +154,6 @@ class Gsmp:
             """
             print output
             """
-            print("s:{0}, \te:{1}, \ts':{2},".format(old_state, winning_event, self.current_state))
+            # print("s:{0}, \te:{1}, \ts':{2},".format(old_state, winning_event, self.current_state))
 
             epochs -= 1

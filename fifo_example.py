@@ -4,6 +4,10 @@ import numpy as np
 
 N = 5
 
+l = 1   # arrival rate
+m = 2   # service rate
+
+
 Events = {'arr': Event('arr'), 'com': Event('com')}
 
 bitmap = BitMap(list(Events.values()))
@@ -38,8 +42,8 @@ def p(ss, s, e):
 
 
 distributions = {
-    'arr': np.random.uniform,
-    'com': np.random.uniform,
+    'arr': np.random.exponential,
+    'com': np.random.exponential,
 }
 
 
@@ -47,25 +51,34 @@ def f(_s, _e, s, e):
     if e == Events['arr']:
         if States.index(_s) == States.index(s) + 1:
             if States.index(s) in range(0, N) and _e == Events['arr']:
-                return distributions['arr']()
+                return distributions['arr'](1/l)
             if States.index(s) == 0 and _e == Events['com']:
-                return distributions['com']()
+                return distributions['com'](1/m)
     elif e == Events['com']:
         if States.index(_s) == States.index(s) - 1:
             if States.index(s) in range(2, N+1) and _e == Events['com']:
-                return distributions['com']()
+                return distributions['com'](1/m)
             if States.index(s) == N and _e == Events['arr']:
-                return distributions['arr']()
+                return distributions['arr'](1/l)
     raise ValueError
 
 
 def f_0(s, e):
     if States.index(s) == 0 and e == Events['arr']:
-        return distributions['arr'](5)
+        return distributions['arr'](1)
     else:
         raise ValueError
 
 
 if __name__ == "__main__":
     simulation = Gsmp(States, list(Events.values()), p, r, f, States[0], f_0)
-    simulation.simulate(30)
+    simulation.simulate(10000)
+    from functools import reduce
+    print(reduce(lambda x, y: x + y, [int(_s.label) * _s.visits for _s in States]) / 10000)
+    """
+    lambda = 1
+    s = 0.5
+    rho = 0.5
+    var(s) = 0.25
+    L = 0.5 + (0.25 + 0.25)/2(0.5) = 1
+    """

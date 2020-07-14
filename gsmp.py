@@ -6,17 +6,17 @@ class Event:
     def __init__(self, label):
         self.label = label
         self.clock = 0
-        self.current_time = 0
+        self.position = 0
+
+    def set_position(self, value):
+        self.position = value
 
     def set_clock(self, clock):
         self.clock = clock
-        self.current_time = clock
 
     def tick_down(self, time):
-        self.current_time -= time
-        self.current_time = self.current_time % self.clock
-        if self.current_time == 0:
-            self.current_time = self.clock
+        self.clock -= time
+        assert self.clock >= 0
 
     def __eq__(self, other):
         if isinstance(self, type(other)):
@@ -34,7 +34,7 @@ class State:
     def __init__(self, label, events):
         self.label = label
         self.events = events
-        self.visits = 0
+        self.time_spent = 0
 
     def __eq__(self, other):
         if isinstance(self, type(other)):
@@ -90,8 +90,8 @@ class Gsmp:
             except ValueError:
                 pass
 
-    def set_current_state(self, new_state):
-        e = self.current_state.events
+    def set_current_state(self, new_state, winning_event):
+        e = self.current_state.events - winning_event.position
         e_prime = new_state.events
         old_events = e & e_prime
         new_events = e_prime ^ old_events
@@ -101,9 +101,9 @@ class Gsmp:
         self.active_events = old_events | new_events
         self.current_state = new_state
 
-    def set_old_clock(self, s, e, t):
+    def set_old_clock(self, s, t):
         for _e in self.bitmap.get(self.old_events):
-            _e.tick_down(t * self.rates(s, e))
+            _e.tick_down(t * self.rates(s, _e))
 
     def set_new_clocks(self, s, e):
         _s = self.current_state
@@ -116,6 +116,7 @@ class Gsmp:
                 print(E)
 
     def simulate(self, epochs):
+        total_time = 0
         while epochs > 0:
             old_state = self.current_state
             active_events = self.bitmap.get(self.active_events)
@@ -126,7 +127,7 @@ class Gsmp:
             tmp = []
             for event in active_events:
                 try:
-                    tmp.append(event.current_time / self.rates(old_state, event))
+                    tmp.append(event.clock / self.rates(old_state, event))
                 except ZeroDivisionError:
                     pass
                 except ValueError:
@@ -136,19 +137,20 @@ class Gsmp:
             winning_events = [active_events[i] for i in event_index]
             winning_event = np.random.choice(winning_events)
 
+            old_state.time_spent += time_elapsed
+            total_time += time_elapsed
+
             """
             Determine next state
             """
             ps = self.probabilities(self.states, old_state, winning_event)
             new_state = np.random.choice(self.states, p=ps)
 
-            new_state.visits += 1
-
             if new_state == self.initial_state:
                 self.set_initial_state()
             else:
-                self.set_current_state(new_state)
-                self.set_old_clock(old_state, winning_event, time_elapsed)
+                self.set_current_state(new_state, winning_event)
+                self.set_old_clock(old_state, time_elapsed)
                 self.set_new_clocks(old_state, winning_event)
 
             """
@@ -157,3 +159,4 @@ class Gsmp:
             # print("s:{0}, \te:{1}, \ts':{2},".format(old_state, winning_event, self.current_state))
 
             epochs -= 1
+        return total_time

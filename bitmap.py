@@ -2,6 +2,8 @@ class BitMap:
     def __init__(self, objects):
         self.size = len(objects)
         self.items = objects
+        for item in objects:
+            item.set_position(1 << (self.size - objects.index(item) - 1))
 
     def get(self, binary):
         string = bin(binary)[2:].zfill(self.size)

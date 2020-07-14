@@ -2,7 +2,7 @@ from gsmp import *
 from bitmap import BitMap
 import numpy as np
 
-N = 5
+N = 10
 
 l = 1   # arrival rate
 m = 2   # service rate
@@ -72,9 +72,9 @@ def f_0(s, e):
 
 if __name__ == "__main__":
     simulation = Gsmp(States, list(Events.values()), p, r, f, States[0], f_0)
-    simulation.simulate(10000)
+    total_time = simulation.simulate(1000)
     from functools import reduce
-    print(reduce(lambda x, y: x + y, [int(_s.label) * _s.visits for _s in States]) / 10000)
+    print(reduce(lambda x, y: x + y, [int(_s.label) * _s.time_spent for _s in States]) / total_time)
     """
     lambda = 1
     s = 0.5

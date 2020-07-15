@@ -1,15 +1,11 @@
 import numpy as np
-from bitmap import BitMap
+from src.bitmap import BitMap
 
 
 class Event:
     def __init__(self, label):
         self.label = label
-        self.clock = 0
-        self.position = 0
-
-    def set_position(self, value):
-        self.position = value
+        self.clock = None
 
     def set_clock(self, clock):
         self.clock = clock
@@ -49,32 +45,35 @@ class State:
 
 
 class Gsmp:
-    def __init__(self, S, E, P, R, F, S_0, F_0):
+    def __init__(self, s, e, p, r, f, s_0, f_0):
         """
-        :param S: list of all State objects in simulation
-        :param E: list of all Event objects in simulation
-        :param P: function taking args (s', s, e)
-        :param R: function taking args (s, e)
-        :param F: function taking args (s', e', s, e)
-        :param S_0: Initial state
-        :param F_0: Initial clock distribution
+        :param s: list of all State objects in simulation
+        :param e: list of all Event objects in simulation
+        :param p: function taking args (s', s, e)
+        :param r: function taking args (s, e)
+        :param f: function taking args (s', e', s, e)
+        :param s_0: Initial state setting function
+        :param f_0: Initial clock distribution function
         """
-        self.states = S
-        self.events = E
-        self.probabilities = P
-        self.rates = R
-        self.clock_distribution = F
+        self.states = s
+        self.events = e
+        self.probabilities = p
+        self.rates = r
+        self.clock_distribution = f
 
-        self.initial_state = S_0
-        self.initial_distribution = F_0
+        self.initial_state = np.random.choice(
+            s,
+            p=[s_0(_s) for _s in s]
+        )
+        self.initial_distribution = f_0
 
-        self.current_state = S_0
+        self.current_state = self.initial_state
         self.old_events = 0
         self.cancelled_events = 0
         self.new_events = 0
         self.active_events = 0
 
-        self.bitmap = BitMap(E)
+        self.bitmap = BitMap(e)
         self.set_initial_state()
 
     def set_initial_state(self):
@@ -91,7 +90,7 @@ class Gsmp:
                 pass
 
     def set_current_state(self, new_state, winning_event):
-        e = self.current_state.events - winning_event.position
+        e = self.current_state.events - self.bitmap.positions[winning_event]
         e_prime = new_state.events
         old_events = e & e_prime
         new_events = e_prime ^ old_events

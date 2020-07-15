@@ -1,5 +1,5 @@
-from gsmp import *
-from bitmap import BitMap
+from src.gsmp import *
+from src.bitmap import BitMap
 import numpy as np
 
 N = 10
@@ -63,6 +63,10 @@ def f(_s, _e, s, e):
     raise ValueError
 
 
+def s_0(s):
+    return 1 if s.label == '0' else 0
+
+
 def f_0(s, e):
     if States.index(s) == 0 and e == Events['arr']:
         return distributions['arr'](1)
@@ -71,7 +75,7 @@ def f_0(s, e):
 
 
 if __name__ == "__main__":
-    simulation = Gsmp(States, list(Events.values()), p, r, f, States[0], f_0)
+    simulation = Gsmp(States, list(Events.values()), p, r, f, s_0, f_0)
     total_time = simulation.simulate(1000)
     from functools import reduce
     print(reduce(lambda x, y: x + y, [int(_s.label) * _s.time_spent for _s in States]) / total_time)

@@ -2,11 +2,12 @@ class BitMap:
     def __init__(self, objects):
         self.size = len(objects)
         self.items = objects
+        self.positions = {}
         for item in objects:
-            item.set_position(1 << (self.size - objects.index(item) - 1))
+            self.positions[item] = 1 << (self.size - objects.index(item) - 1)
 
-    def get(self, binary):
-        string = bin(binary)[2:].zfill(self.size)
+    def get(self, num):
+        string = bin(num)[2:].zfill(self.size)
         assert len(string) == self.size
         return [item for item in self.items if string[self.items.index(item)] == '1']
 

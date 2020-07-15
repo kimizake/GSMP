@@ -1,5 +1,5 @@
-from gsmp import *
-from bitmap import BitMap
+from src.gsmp import *
+from src.bitmap import BitMap
 import numpy as np
 
 N = 20

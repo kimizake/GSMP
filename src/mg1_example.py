@@ -6,11 +6,11 @@ N = 10
 arrival_rate = 1   # arrival rate
 service_rate = 2   # service rate
 
-Events = {'arr': Event('arr'), 'com': Event('com')}
-States = [State(str(i)) for i in range(N + 1)]
+es = {'arr': Event('arr'), 'com': Event('com')}
+ss = [State(str(i)) for i in range(N + 1)]
 
 
-class mg1(GsmpSpec):
+class Mg1(GsmpSpec):
     def __init__(self, states, events):
         super().__init__(states, events)
         self.distributions = {
@@ -19,35 +19,35 @@ class mg1(GsmpSpec):
         }
 
     def e(self, s: State) -> list:
-        if s == States[0]:
+        if s == ss[0]:
             return [Event('arr')]
-        elif s == States[-1]:
+        elif s == ss[-1]:
             return [Event('com')]
-        elif s in States:
+        elif s in ss:
             return [Event('arr'), Event('com')]
         else:
             raise TypeError
 
     def p(self, _s: State, s: State, e: Event) -> float:
-        if States.index(_s) == States.index(s) + 1:
-            return 1 if e == Events['arr'] else 0
-        elif States.index(_s) == States.index(s) - 1:
-            return 1 if e == Events['com'] else 0
+        if ss.index(_s) == ss.index(s) + 1:
+            return 1 if e == es['arr'] else 0
+        elif ss.index(_s) == ss.index(s) - 1:
+            return 1 if e == es['com'] else 0
         else:
             return 0
 
     def f(self, _s: State, _e: Event, s: State, e: Event, *args) -> float:
-        if e == Events['arr']:
-            if States.index(_s) == States.index(s) + 1:
-                if States.index(s) in range(0, N) and _e == Events['arr']:
+        if e == es['arr']:
+            if ss.index(_s) == ss.index(s) + 1:
+                if ss.index(s) in range(0, N) and _e == es['arr']:
                     return self.distributions['arr'](1 / arrival_rate)
-                if States.index(s) == 0 and _e == Events['com']:
+                if ss.index(s) == 0 and _e == es['com']:
                     return self.distributions['com'](1 / service_rate)
-        elif e == Events['com']:
-            if States.index(_s) == States.index(s) - 1:
-                if States.index(s) in range(2, N + 1) and _e == Events['com']:
+        elif e == es['com']:
+            if ss.index(_s) == ss.index(s) - 1:
+                if ss.index(s) in range(2, N + 1) and _e == es['com']:
                     return self.distributions['com'](1 / service_rate)
-                if States.index(s) == N and _e == Events['arr']:
+                if ss.index(s) == N and _e == es['arr']:
                     return self.distributions['arr'](1 / arrival_rate)
         raise ValueError
 
@@ -58,15 +58,15 @@ class mg1(GsmpSpec):
         return 1 if s == State('0') else 0
 
     def f_0(self, e: Event, s: State, *args) -> float:
-        if States.index(s) == 0 and e == Events['arr']:
+        if ss.index(s) == 0 and e == es['arr']:
             return self.distributions['arr'](1)
         else:
             raise ValueError
 
 
 if __name__ == "__main__":
-    spec = mg1(States, list(Events.values()))
+    spec = Mg1(ss, list(es.values()))
     simulation = GsmpSimulation(spec)
     total_time = simulation.simulate(1000)
     from functools import reduce
-    print(reduce(lambda x, y: x + y, [int(_s.label) * _s.time_spent for _s in States]) / total_time)
+    print(reduce(lambda x, y: x + y, [int(_s.label) * _s.time_spent for _s in ss]) / total_time)

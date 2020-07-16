@@ -1,2 +1,2 @@
 from src.gsmp import Gsmp
-from src.fifo_example import 
+from src.mg1_example import *

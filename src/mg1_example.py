@@ -11,12 +11,9 @@ ss = [State(str(i)) for i in range(N + 1)]
 
 
 class Mg1(GsmpSpec):
-    def __init__(self, states, events):
+    def __init__(self, states, events, distribution):
         super().__init__(states, events)
-        self.distributions = {
-            'arr': np.random.exponential,
-            'com': np.random.exponential,
-        }
+        self.distributions = distribution
 
     def e(self, s: State) -> list:
         if s == ss[0]:
@@ -40,15 +37,15 @@ class Mg1(GsmpSpec):
         if e == es['arr']:
             if ss.index(_s) == ss.index(s) + 1:
                 if ss.index(s) in range(0, N) and _e == es['arr']:
-                    return self.distributions['arr'](1 / arrival_rate)
+                    return self.distributions['arr'](args)
                 if ss.index(s) == 0 and _e == es['com']:
-                    return self.distributions['com'](1 / service_rate)
+                    return self.distributions['com'](args)
         elif e == es['com']:
             if ss.index(_s) == ss.index(s) - 1:
                 if ss.index(s) in range(2, N + 1) and _e == es['com']:
-                    return self.distributions['com'](1 / service_rate)
+                    return self.distributions['com'](args)
                 if ss.index(s) == N and _e == es['arr']:
-                    return self.distributions['arr'](1 / arrival_rate)
+                    return self.distributions['arr'](args)
         raise ValueError
 
     def r(self, s: State, e: Event) -> float:
@@ -65,7 +62,7 @@ class Mg1(GsmpSpec):
 
 
 if __name__ == "__main__":
-    spec = Mg1(ss, list(es.values()))
+    spec = Mg1(ss, list(es.values()), {'arr': np.random.exponential, 'com': np.random.exponential})
     simulation = GsmpSimulation(spec)
     total_time = simulation.simulate(1000)
     from functools import reduce

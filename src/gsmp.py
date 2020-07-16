@@ -1,5 +1,6 @@
 import numpy as np
 from src.bitmap import BitMap
+from abc import ABCMeta, abstractmethod
 
 
 class Event:
@@ -27,10 +28,13 @@ class Event:
 
 
 class State:
-    def __init__(self, label, events):
+    def __init__(self, label):
         self.label = label
-        self.events = events
+        self.events = 0
         self.time_spent = 0
+
+    def set_events(self, events):
+        self.events = events
 
     def __eq__(self, other):
         if isinstance(self, type(other)):
@@ -44,36 +48,73 @@ class State:
         return self.label
 
 
-class Gsmp:
-    def __init__(self, s, e, p, r, f, s_0, f_0):
-        """
-        :param s: list of all State objects in simulation
-        :param e: list of all Event objects in simulation
-        :param p: function taking args (s', s, e)
-        :param r: function taking args (s, e)
-        :param f: function taking args (s', e', s, e)
-        :param s_0: Initial state setting function
-        :param f_0: Initial clock distribution function
-        """
-        self.states = s
-        self.events = e
-        self.probabilities = p
-        self.rates = r
-        self.clock_distribution = f
+class GsmpSpec(metaclass=ABCMeta):
+    def __init__(self, states, events):
+        self.states = states
+        self.events = events
+        bitmap = BitMap(events)
+        for state in states:
+            state.set_events(bitmap.format(self.e(state)))
+
+    @classmethod
+    def __subclasshook__(cls, subclass):
+        return (hasattr(subclass, 'e') and callable(subclass.e) and
+                hasattr(subclass, 'p') and callable(subclass.p) and
+                hasattr(subclass, 'f') and callable(subclass.f) and
+                hasattr(subclass, 'r') and callable(subclass.r) and
+                hasattr(subclass, 's_0') and callable(subclass.s_0) and
+                hasattr(subclass, 'f_0') and callable(subclass.f_0) or
+                NotImplementedError)
+
+    @abstractmethod
+    def e(self, s: State) -> list:
+        """Returns the set of events scheduled to occur in state"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def p(self, _s: State, s: State, e: Event) -> float:
+        """Returns the probability of the next state being _s when event e occurs in state s"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def f(self, _s: State, _e: Event, s: State, e: Event, *args) -> float:
+        """Returns the distribution function (evaluated at x) used to set the clock for new event _e
+         when event e triggers a transition from state s to state _s"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def r(self, s: State, e: Event) -> float:
+        """Returns the rate at which the clock for event e runs down in state s"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def s_0(self, s: State) -> float:
+        """Returns the probability of state s being the initial state"""
+        raise NotImplementedError
+
+    @abstractmethod
+    def f_0(self, e: Event, s: State, *args) -> float:
+        """Returns the distribution function (evaluated at x) to set the clock of event e in initial state s"""
+        raise NotImplementedError
+
+
+class GsmpSimulation:
+    def __init__(self, spec: GsmpSpec):
+        self.specification = spec
 
         self.initial_state = np.random.choice(
-            s,
-            p=[s_0(_s) for _s in s]
+            spec.states,
+            p=[spec.s_0(_s) for _s in spec.states]
         )
-        self.initial_distribution = f_0
+        self.initial_distribution = spec.f_0
 
-        self.current_state = self.initial_state
+        self.current_state = None
         self.old_events = 0
         self.cancelled_events = 0
         self.new_events = 0
         self.active_events = 0
 
-        self.bitmap = BitMap(e)
+        self.bitmap = BitMap(spec.events)
         self.set_initial_state()
 
     def set_initial_state(self):
@@ -85,7 +126,7 @@ class Gsmp:
 
         for _e in self.bitmap.get(self.new_events):
             try:
-                _e.set_clock(self.initial_distribution(self.initial_state, _e))
+                _e.set_clock(self.initial_distribution(_e, self.initial_state))
             except ValueError:
                 pass
 
@@ -102,14 +143,14 @@ class Gsmp:
 
     def set_old_clock(self, s, t):
         for _e in self.bitmap.get(self.old_events):
-            _e.tick_down(t * self.rates(s, _e))
+            _e.tick_down(t * self.specification.r(s, _e))
 
     def set_new_clocks(self, s, e):
         _s = self.current_state
         for _e in self.bitmap.get(self.new_events):
             try:
                 _e.set_clock(
-                    self.clock_distribution(_s, _e, s, e)
+                    self.specification.f(_s, _e, s, e)
                 )
             except ValueError as E:
                 print(E)
@@ -126,7 +167,7 @@ class Gsmp:
             tmp = []
             for event in active_events:
                 try:
-                    tmp.append(event.clock / self.rates(old_state, event))
+                    tmp.append(event.clock / self.specification.r(old_state, event))
                 except ZeroDivisionError:
                     pass
                 except ValueError:
@@ -142,8 +183,10 @@ class Gsmp:
             """
             Determine next state
             """
-            ps = self.probabilities(self.states, old_state, winning_event)
-            new_state = np.random.choice(self.states, p=ps)
+            new_state = np.random.choice(
+                self.specification.states,
+                p=[self.specification.p(_s, old_state, winning_event) for _s in self.specification.states]
+            )
 
             if new_state == self.initial_state:
                 self.set_initial_state()

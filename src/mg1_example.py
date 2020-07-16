@@ -34,7 +34,7 @@ class mg1(GsmpSpec):
         elif States.index(_s) == States.index(s) - 1:
             return 1 if e == Events['com'] else 0
         else:
-            raise TypeError
+            return 0
 
     def f(self, _s: State, _e: Event, s: State, e: Event, *args) -> float:
         if e == Events['arr']:

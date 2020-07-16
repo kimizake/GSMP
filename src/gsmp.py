@@ -108,27 +108,14 @@ class GsmpSimulation:
         )
         self.initial_distribution = spec.f_0
 
-        self.current_state = None
-        self.old_events = 0
-        self.cancelled_events = 0
-        self.new_events = 0
-        self.active_events = 0
-
-        self.bitmap = BitMap(spec.events)
-        self.set_initial_state()
-
-    def set_initial_state(self):
         self.current_state = self.initial_state
         self.old_events = 0
         self.cancelled_events = 0
-        self.new_events = self.initial_state.events
-        self.active_events = self.initial_state.events
+        self.new_events = self.current_state.events
+        self.active_events = self.new_events
 
-        for _e in self.bitmap.get(self.new_events):
-            try:
-                _e.set_clock(self.initial_distribution(_e, self.initial_state))
-            except ValueError:
-                pass
+        self.bitmap = BitMap(spec.events)
+        self.set_new_clocks(None, None)
 
     def set_current_state(self, new_state, winning_event):
         e = self.current_state.events - self.bitmap.positions[winning_event]
@@ -150,6 +137,7 @@ class GsmpSimulation:
         for _e in self.bitmap.get(self.new_events):
             try:
                 _e.set_clock(
+                    self.specification.f_0(_e, _s) if _s == self.initial_state else
                     self.specification.f(_s, _e, s, e)
                 )
             except ValueError as E:
@@ -188,17 +176,9 @@ class GsmpSimulation:
                 p=[self.specification.p(_s, old_state, winning_event) for _s in self.specification.states]
             )
 
-            if new_state == self.initial_state:
-                self.set_initial_state()
-            else:
-                self.set_current_state(new_state, winning_event)
-                self.set_old_clock(old_state, time_elapsed)
-                self.set_new_clocks(old_state, winning_event)
-
-            """
-            print output
-            """
-            # print("s:{0}, \te:{1}, \ts':{2},".format(old_state, winning_event, self.current_state))
+            self.set_current_state(new_state, winning_event)
+            self.set_old_clock(old_state, time_elapsed)
+            self.set_new_clocks(old_state, winning_event)
 
             epochs -= 1
         return total_time

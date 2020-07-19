@@ -77,8 +77,8 @@ class GsmpSpec(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def f(self, _s: State, _e: Event, s: State, e: Event, *args) -> float:
-        """Returns the distribution function (evaluated at x) used to set the clock for new event _e
+    def f(self, _s: State, _e: Event, s: State, e: Event) -> float:
+        """Returns the distribution function used to set the clock for new event _e
          when event e triggers a transition from state s to state _s"""
         raise NotImplementedError
 
@@ -93,8 +93,8 @@ class GsmpSpec(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def f_0(self, e: Event, s: State, *args) -> float:
-        """Returns the distribution function (evaluated at x) to set the clock of event e in initial state s"""
+    def f_0(self, e: Event, s: State) -> float:
+        """Returns the distribution function to set the clock of event e in initial state s"""
         raise NotImplementedError
 
 
@@ -116,6 +116,8 @@ class GsmpSimulation:
 
         self.bitmap = BitMap(spec.events)
         self.set_new_clocks(None, None)
+
+        self.total_time = 0
 
     def set_current_state(self, new_state, winning_event):
         e = self.current_state.events - self.bitmap.positions[winning_event]
@@ -144,7 +146,6 @@ class GsmpSimulation:
                 print(E)
 
     def simulate(self, epochs):
-        total_time = 0
         while epochs > 0:
             old_state = self.current_state
             active_events = self.bitmap.get(self.active_events)
@@ -166,7 +167,7 @@ class GsmpSimulation:
             winning_event = np.random.choice(winning_events)
 
             old_state.time_spent += time_elapsed
-            total_time += time_elapsed
+            self.total_time += time_elapsed
 
             """
             Determine next state
@@ -181,4 +182,4 @@ class GsmpSimulation:
             self.set_new_clocks(old_state, winning_event)
 
             epochs -= 1
-        return total_time
+        return self.total_time

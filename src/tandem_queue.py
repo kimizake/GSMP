@@ -30,7 +30,17 @@ class tandem_queue(GsmpSpec):
         return [Event(i) for i in chain(*map(func, range(d), s.label))]
 
     def p(self, _s: State, s: State, e: Event) -> float:
-        pass
+        (q, event) = e.label
+        if event == 'arr':
+            if _s.label[q] == s.label[q] + 1 and _s.label[q] <= c:
+                return 1
+            else:
+                return 0
+        elif event == 'com':
+            if _s.label[q] == s.label[q] - 1 and _s.label[q] >= 0:
+                return 1
+            else:
+                return 0
 
     def f(self, _s: State, _e: Event, s: State, e: Event) -> float:
         pass

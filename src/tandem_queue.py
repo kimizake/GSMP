@@ -22,7 +22,7 @@ class tandem_queue(GsmpSpec):
     def e(self, s: State) -> list:
         def func(index, num):
             out = []
-            if num < c:
+            if index == 0 and num < c:
                 out.append((index, 'arr'))
             if num > 0:
                 out.append((index, 'com'))
@@ -31,16 +31,13 @@ class tandem_queue(GsmpSpec):
 
     def p(self, _s: State, s: State, e: Event) -> float:
         (q, event) = e.label
-        if event == 'arr':
+        if event == 'arr' and q == 0:
             if _s.label[q] == s.label[q] + 1 and _s.label[q] <= c:
                 return 1
-            else:
-                return 0
-        elif event == 'com':
+        if event == 'com':
             if _s.label[q] == s.label[q] - 1 and _s.label[q] >= 0:
                 return 1
-            else:
-                return 0
+        return 0
 
     def f(self, _s: State, _e: Event, s: State, e: Event) -> float:
         pass
@@ -57,7 +54,7 @@ class tandem_queue(GsmpSpec):
         raise ValueError
 
 
-es = [Event(i) for i in product(list(range(d)), ['arr', 'com'])]
+es = [Event((0, 'arr'))] + [Event(i) for i in product(list(range(d)), ['com'])]
 ss = [State(i) for i in gen_vectors()]
 
 if __name__ == "__main__":

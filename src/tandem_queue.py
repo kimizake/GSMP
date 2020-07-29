@@ -2,8 +2,8 @@ from src.gsmp import *
 import numpy as np
 from itertools import chain, product
 
-d = 2
-c = 2
+d = 5
+c = 5
 
 
 def gen_vectors():
@@ -84,5 +84,7 @@ ss = [State(i) for i in np.array(list(product(range(c + 1), repeat=d)))]
 if __name__ == "__main__":
     q = tandem_queue(ss, es)
     sim = GsmpSimulation(q)
-    dist = sim.simulate(100)
-    print(dist)
+    dist = sim.simulate(1000)
+    from operator import itemgetter
+    for x in sorted(zip(ss, dist), key=itemgetter(1), reverse=True):
+        print(x)

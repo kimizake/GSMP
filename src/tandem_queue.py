@@ -2,17 +2,8 @@ from src.gsmp import *
 import numpy as np
 from itertools import chain, product
 
-d = 5
+d = 3
 c = 5
-
-
-def gen_vectors():
-    arr = np.zeros(d)
-    for i in range(d):
-        for j in range(c):
-            yield np.copy(arr)
-            arr[i] += 1
-    yield arr
 
 
 class tandem_queue(GsmpSpec):

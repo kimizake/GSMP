@@ -24,13 +24,13 @@ class Event:
         return hash(self.label)
 
     def __repr__(self):
-        return self.label
+        return str(self.label)
 
 
 class State:
     def __init__(self, label):
         self.label = label
-        self.events = 0
+        self.events = None
         self.time_spent = 0
 
     def set_events(self, events):
@@ -38,14 +38,14 @@ class State:
 
     def __eq__(self, other):
         if isinstance(self, type(other)):
-            return self.label == other.label
+            return np.all(self.label == other.label)
         return False
 
     def __hash__(self):
         return hash(self.label)
 
     def __repr__(self):
-        return self.label
+        return str(self.label)
 
 
 class GsmpSpec(metaclass=ABCMeta):
@@ -55,6 +55,7 @@ class GsmpSpec(metaclass=ABCMeta):
         bitmap = BitMap(events)
         for state in states:
             state.set_events(bitmap.format(self.e(state)))
+            # print("s={0}, E(s)={1}".format(state, self.e(state)))
 
     @classmethod
     def __subclasshook__(cls, subclass):
@@ -181,5 +182,7 @@ class GsmpSimulation:
             self.set_old_clock(old_state, time_elapsed)
             self.set_new_clocks(old_state, winning_event)
 
+            # print("s={0}, e={1}, s'={2}".format(old_state, winning_event, new_state))
+
             epochs -= 1
-        return self.total_time
+        return list(map(lambda s: s.time_spent / self.total_time, self.specification.states))

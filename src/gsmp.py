@@ -185,4 +185,4 @@ class GsmpSimulation:
             # print("s={0}, e={1}, s'={2}".format(old_state, winning_event, new_state))
 
             epochs -= 1
-        return list(map(lambda s: s.time_spent / self.total_time, self.specification.states))
+        return map(lambda s: s.time_spent / self.total_time, self.specification.states)

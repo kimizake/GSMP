@@ -30,7 +30,8 @@ class ggc(GsmpSpec):
         if e == Event('arr'):
             if old_queue < self.k and new_queue == old_queue + 1:
                 return int(np.all(old_servers == new_servers == np.ones(self.c)))
-            elif old_queue == new_queue == 0 and norm(old_servers, ord=1) + 1 == norm(new_servers, ord=1):
+            elif old_queue == new_queue == 0 and norm(old_servers, ord=1) + 1 == norm(new_servers, ord=1) and len(
+                    np.where(np.not_equal(old_servers, new_servers) == 1)[0]) == 1:
                 return 1 / (self.c - norm(old_servers, ord=1))
         else:
             (_, server) = e.label
@@ -74,7 +75,7 @@ def pi(c, k, l, m):
 
 
 if __name__ == "__main__":
-    c = 2
+    c = 1
     k = 3
     ss = list(chain(
         (State((0, *t)) for t in product(range(2), repeat=c)),
@@ -92,8 +93,8 @@ if __name__ == "__main__":
     sim = GsmpSimulation(mmc)
     ps = sim.simulate(5000)
 
-    _ss = list(map(lambda s: sum(s.label), ss))
-    _ps = map(lambda i: sum(map(lambda j: j[1], i)), (list(g) for _, g in groupby(zip(_ss, ps), key=itemgetter(0))))
+    _ss = map(lambda s: sum(s.label), ss)
+    _ps = map(lambda i: sum(map(lambda j: j[1], i)), (list(g) for _, g in groupby(sorted(zip(_ss, ps)), key=itemgetter(0))))
 
-    for y in sorted(zip(set(_ss), _ps, pi(c, k+c, 1, 2)), key=itemgetter(0)):
+    for y in sorted(zip(range(c + k), _ps, pi(c, c + k, 1, 2)), key=itemgetter(0)):
         print(y)

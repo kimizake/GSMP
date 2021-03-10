@@ -90,9 +90,9 @@ class Gsmp(metaclass=ABCMeta):
 
         # generate bitmap
 
-        bitmap = BitMap(events)
+        self.bitmap = BitMap(events)
         for state in self.states:
-            state.set_events(bitmap.format(self.e(state)))
+            state.set_events(self.bitmap.format(self.e(state)))
             # print("s={0}, E(s)={1}".format(state, self.e(state)))
 
     @classmethod
@@ -170,28 +170,14 @@ class GsmpComposition(Gsmp):
             return repr((self.i, self.e))
 
     def __init__(self, syncs, *gsmps):
-        self.gsmps = gsmps
-        self.syncs = syncs
-        states = list(self.CompoundState(i) for i in product(*(g.states for g in gsmps)))  # Enumerate cartesian product of all state spaces
-        events = list(self.CompoundEvent(g, event, gsmps.index(g)) for g in gsmps for event in g.events)   # Union of all Event sets
-        for _, v in syncs.items():
-            events = list(filter(lambda e: not e == v, events))
-        super().__init__(states, events)
+        self.nodes = gsmps  # List of gsmp
+        self.syncs = syncs  # List of tuples - equivalency of events from different gsmp nodes
+        states = list(
+            ... for g in gsmps
+        )
 
     def e(self, s) -> list:
-        es = list(chain.from_iterable(map(lambda g, v: map(lambda e: (g, e), g.e(v)), self.gsmps, s)))
-
-        def filter_blocked_events(event):
-            try:
-                events = self.syncs[event]
-                for e in events:
-                    if e not in es:
-                        return False
-            except KeyError:
-                pass
-            return True
-        es = list(filter(filter_blocked_events, es))
-        return list(filter(lambda e: e in es, self.events))
+        pass
 
     def p(self, _s, s, e) -> float:
         p = list(int(x == y) for x, y in zip(_s, s))
@@ -260,13 +246,12 @@ class Simulator:
         self.new_events = self.current_state.events
         self.active_events = self.new_events
 
-        self.bitmap = BitMap(gsmp.events)
         self.set_new_clocks(None, None)
 
         self.total_time = 0
 
     def set_current_state(self, new_state, winning_event):
-        e = self.current_state.events - self.bitmap.positions[winning_event]
+        e = self.current_state.events - self.gsmp.bitmap.positions[winning_event]
         e_prime = new_state.events
         old_events = e & e_prime
         new_events = e_prime ^ old_events
@@ -277,12 +262,12 @@ class Simulator:
         self.current_state = new_state
 
     def set_old_clock(self, s, t):
-        for _e in self.bitmap.get(self.old_events):
+        for _e in self.gsmp.bitmap.get(self.old_events):
             _e.tick_down(t * self.gsmp.r(s, _e))
 
     def set_new_clocks(self, s, e):
         _s = self.current_state
-        for _e in self.bitmap.get(self.new_events):
+        for _e in self.gsmp.bitmap.get(self.new_events):
             try:
                 _e.set_clock(
                     self.gsmp.f_0(_e, _s) if _s == self.initial_state else
@@ -294,7 +279,7 @@ class Simulator:
     def simulate(self, epochs):
         while epochs > 0:
             old_state = self.current_state
-            active_events = self.bitmap.get(self.active_events)
+            active_events = self.gsmp.bitmap.get(self.active_events)
 
             """
             Determine winning event

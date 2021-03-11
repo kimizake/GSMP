@@ -136,6 +136,9 @@ class Gsmp(metaclass=ABCMeta):
         """Returns the distribution function to set the clock of event e in initial state s"""
         raise NotImplementedError
 
+    def get_states(self):
+        return self.states
+
     def get_current_state(self):
         return self.current_state
 
@@ -147,6 +150,24 @@ class Gsmp(metaclass=ABCMeta):
             self.current_state.adjacent_nodes,
             p=[self.p(_s, o, e) for _s in self.current_state.adjacent_nodes]
         )
+
+    def choose_winning_event(self, o, es):
+        tmp = []
+        for e in es:
+            try:
+                tmp.append(e.clock / self.r(o, e))
+            except ZeroDivisionError:
+                pass
+            except ValueError:
+                pass
+        try:
+            t = np.amin(tmp)
+        except Exception:
+            pass
+        event_index = np.where(tmp == t)[0]
+        # Usually there is only 1 winning event, but in the case of a tie, randomly select a winner
+        winning_events = [es[i] for i in event_index]
+        return np.random.choice(winning_events), t
 
     def set_current_state(self, new_state, winning_event):
         e = self.current_state.events - self.bitmap.positions[winning_event]
@@ -181,8 +202,8 @@ class Gsmp(metaclass=ABCMeta):
 
 class GsmpComposition:
 
-    def __init__(self, *gsmps):
-        self.nodes = gsmps
+    def __init__(self, *args):
+        self.nodes = args
         # TODO: check preconditions for composition
 
     def find_gsmp(self, e):
@@ -195,11 +216,15 @@ class GsmpComposition:
             if e in node.events: out.append(i)
         return out
 
+    def get_states(self):
+        return list(chain.from_iterable(node.get_states() for node in self.nodes))
+
     def get_current_state(self):
         return list(n.get_current_state() for n in self.nodes)
 
     def get_active_events(self):
-        return set(chain.from_iterable(n.get_active_events() for n in self.nodes))
+        # TODO: filtering for shared events
+        return dict((i, n.get_active_events()) for i, n in enumerate(self.nodes))
 
     def get_new_state(self, o, e):
         """
@@ -208,6 +233,16 @@ class GsmpComposition:
             Return a list of just the updated states
         """
         return list(self.nodes[i].get_new_state(o[i], e) for i in self.find_gsmp(e))
+
+    def choose_winning_event(self, o, es):
+        """
+        :param o: list of current states in each node
+        :param es: hashmap of active events
+        :return: winning, time passed
+        """
+        ttl = dict(self.nodes[index].choose_winning_event(o[index], events) for index, events in es.items())
+        winner = min(ttl, key=ttl.get)
+        return winner, ttl[winner]
 
     def set_current_state(self, s, e):
         """
@@ -234,7 +269,7 @@ class GsmpComposition:
     @staticmethod
     def update_state_time(s, t):
         for _s in s:
-            s.time_spent += t
+            _s.time_spent += t
 
 
 class Simulator:
@@ -247,25 +282,7 @@ class Simulator:
             old_state = self.g.get_current_state()
             active_events = self.g.get_active_events()
 
-            """
-            Determine winning event
-            """
-            tmp = []
-            for event in active_events:
-                try:
-                    tmp.append(event.clock / self.g.r(old_state, event))
-                except ZeroDivisionError:
-                    pass
-                except ValueError:
-                    pass
-            try:
-                time_elapsed = np.amin(tmp)
-            except Exception:
-                pass
-            event_index = np.where(tmp == time_elapsed)[0]
-            # Usually there is only 1 winning event, but in the case of a tie, randomly select a winner
-            winning_events = [active_events[i] for i in event_index]
-            winning_event = np.random.choice(winning_events)
+            winning_event, time_elapsed = self.g.choose_winning_event(old_state, active_events)
 
             # Increment timing metrics
             self.g.update_state_time(old_state, time_elapsed)
@@ -282,4 +299,4 @@ class Simulator:
             # print("s={0}, e={1}, s'={2}".format(old_state, winning_event, new_state))
 
             epochs -= 1
-        return map(lambda s: s.time_spent / self.total_time, self.g.states)
+        return map(lambda s: s.time_spent / self.total_time, self.g.get_states())

@@ -139,6 +139,9 @@ class Gsmp(metaclass=ABCMeta):
     def get_states(self):
         return self.states
 
+    def get_events(self):
+        return self.events
+
     def get_current_state(self):
         return self.current_state
 
@@ -206,15 +209,16 @@ class GsmpComposition:
         self.nodes = args
         # TODO: check preconditions for composition
 
-    def find_gsmp(self, e):
-        """
-            return list of indexes of gsmp nodes which contain event e
-            TODO: optimise with hash-map.
-        """
-        out = []
-        for i, node in enumerate(self.nodes):
-            if e in node.events: out.append(i)
-        return out
+        # Create hash from event to node indexes
+        find_gsmp = {}
+        for i, n in enumerate(self.nodes):
+            es = n.get_events()
+            for e in es:
+                if e in find_gsmp:
+                    find_gsmp[e].append(i)
+                else:
+                    find_gsmp[e] = [i]
+        self.find_gsmp = find_gsmp
 
     def get_states(self):
         return list(chain.from_iterable(node.get_states() for node in self.nodes))
@@ -232,7 +236,7 @@ class GsmpComposition:
             go to the active gsmps and call new state
             Return a list of just the updated states
         """
-        return list(self.nodes[i].get_new_state(o[i], e) for i in self.find_gsmp(e))
+        return list(self.nodes[i].get_new_state(o[i], e) for i in self.find_gsmp[e])
 
     def choose_winning_event(self, o, es):
         """
@@ -248,7 +252,7 @@ class GsmpComposition:
         """
             Given a list of updated states, we now need to enumerate to update nodes.
         """
-        for i, j in enumerate(self.find_gsmp(e)):
+        for i, j in enumerate(self.find_gsmp[e]):
             self.nodes[j].set_current_state(s[i], e)
 
     def set_old_clock(self, s, t):
@@ -263,7 +267,7 @@ class GsmpComposition:
             Given the winning event a set of old states (1-1 map with gsmp nodes)
             go to revelevant nodes and update event clocks
         """
-        for i in self.find_gsmp(e):
+        for i in self.find_gsmp[e]:
             self.nodes[i].set_new_clocks(s[i], e)
 
     @staticmethod

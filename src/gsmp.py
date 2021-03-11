@@ -185,6 +185,16 @@ class GsmpComposition:
         self.nodes = gsmps
         # TODO: check preconditions for composition
 
+    def find_gsmp(self, e):
+        """
+            return list of indexes of gsmp nodes which contain event e
+            TODO: optimise with hash-map.
+        """
+        out = []
+        for i, node in enumerate(self.nodes):
+            if e in node.events: out.append(i)
+        return out
+
     def get_current_state(self):
         return list(n.get_current_state() for n in self.nodes)
 
@@ -195,10 +205,14 @@ class GsmpComposition:
         """
             Given a list of old states and a singular event,
             go to the active gsmps and call new state
+            Return a list of just the updated states
         """
         return list(self.nodes[i].get_new_state(o[i], e) for i in self.find_gsmp(e))
 
     def set_current_state(self, s, e):
+        """
+            Given a list of updated states, we now need to enumerate to update nodes.
+        """
         for i, j in enumerate(self.find_gsmp(e)):
             self.nodes[j].set_current_state(s[i], e)
 
@@ -221,6 +235,7 @@ class GsmpComposition:
     def update_state_time(s, t):
         for _s in s:
             s.time_spent += t
+
 
 class Simulator:
     def __init__(self, gsmp: Gsmp):

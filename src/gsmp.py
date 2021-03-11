@@ -237,7 +237,7 @@ class GsmpComposition:
                         active_events.remove(event)
                         break
 
-        return out
+        return {k: v for k, v in out.items() if v}
 
     def get_new_state(self, o, e):
         """

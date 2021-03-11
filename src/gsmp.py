@@ -227,8 +227,17 @@ class GsmpComposition:
         return list(n.get_current_state() for n in self.nodes)
 
     def get_active_events(self):
-        # TODO: filtering for shared events
-        return dict((i, n.get_active_events()) for i, n in enumerate(self.nodes))
+        out = dict((i, n.get_active_events()) for i, n in enumerate(self.nodes))
+
+        for index, active_events in out.items():
+            for event in active_events:
+                gsmp_indexes = self.find_gsmp[event]
+                for i in gsmp_indexes:
+                    if event not in out[i]:
+                        active_events.remove(event)
+                        break
+
+        return out
 
     def get_new_state(self, o, e):
         """

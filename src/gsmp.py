@@ -174,98 +174,53 @@ class Gsmp(metaclass=ABCMeta):
             except ValueError as E:
                 print(E)
 
+    @staticmethod
+    def update_state_time(s, t):
+        s.time_spent += t
 
 
-class GsmpComposition(Gsmp):
-
-    class CompoundState(State):
-        def __init__(self, states):
-            super().__init__(states)
-
-        def __getitem__(self, item):
-            return self.label[item]
-
-    class CompoundEvent(Event):
-        def __init__(self, g, e, i):
-            super().__init__(e.label)
-            self.i = i
-            self.e = e
-            self.g = g
-
-        def __eq__(self, other):
-            if isinstance(self, type(other)):
-                return self.g == other.g and self.e == other.e
-            elif isinstance(other, tuple):
-                return other == (self.g, self.e)
-            return False
-
-        def __hash__(self):
-            return hash(self.e)
-
-        def __iter__(self):
-            return iter((self.g, self.e))
-
-        def __repr__(self):
-            return repr((self.i, self.e))
+class GsmpComposition:
 
     def __init__(self, *gsmps):
-        self.nodes = gsmps  # List of gsmp
+        self.nodes = gsmps
+        # TODO: check preconditions for composition
 
+    def get_current_state(self):
+        return list(n.get_current_state() for n in self.nodes)
 
-    def bitmap(self, item):
-        g, _ = item
-        return g.bitmap
+    def get_active_events(self):
+        return set(chain.from_iterable(n.get_active_events() for n in self.nodes))
 
-    def e(self, s) -> list:
-        g, s = s
-        return list(map(lambda e: (g, e), g.e(s)))
+    def get_new_state(self, o, e):
+        """
+            Given a list of old states and a singular event,
+            go to the active gsmps and call new state
+        """
+        return list(self.nodes[i].get_new_state(o[i], e) for i in self.find_gsmp(e))
 
-    def p(self, _s, s, e) -> float:
-        g, s = s
-        _g, _s = _s
-        __g, e = e
-        if g == _g == __g:
-            return g.p(_s, s, e)
-        if __g == g:
-            ...
-        if __g == _g:
-            ...
+    def set_current_state(self, s, e):
+        for i, j in enumerate(self.find_gsmp(e)):
+            self.nodes[j].set_current_state(s[i], e)
 
-        return 0
+    def set_old_clock(self, s, t):
+        """
+            s is a list of old states, which will be a 1-1 mapping with our gsmp nodes
+        """
+        for i, node in enumerate(self.nodes):
+            node.set_old_clock(s[i], t)
 
-    def f(self, _s, _e, s, e) -> float:
-        es = [e]
-        _es = [_e]
-        try:
-            es.extend(self.syncs[(e.g, e.e)])
-        except KeyError:
-            pass
-        try:
-            _es.extend(self.syncs[(_e.g, _e.e)])
-        except KeyError:
-            pass
-        finally:
-            for k, v in es:
-                for _k, _v in _es:
-                    if k == _k:
-                        i = self.gsmps.index(k)
-                        return k.f(_s[i], _v, s[i], v)
-        raise Exception
+    def set_new_clocks(self, s, e):
+        """
+            Given the winning event a set of old states (1-1 map with gsmp nodes)
+            go to revelevant nodes and update event clocks
+        """
+        for i in self.find_gsmp(e):
+            self.nodes[i].set_new_clocks(s[i], e)
 
-    def r(self, s, e) -> float:
-        g, _e = e
-        i = self.gsmps.index(g)
-        return g.r(s[i], _e)
-
-    def s_0(self, s) -> float:
-        from math import prod
-        return prod(map(lambda x, g: g.s_0(x), s.label, self.gsmps))
-
-    def f_0(self, e, s) -> float:
-        g, _e = e
-        i = self.gsmps.index(g)
-        return g.f_0(_e, s[i])
-
+    @staticmethod
+    def update_state_time(s, t):
+        for _s in s:
+            s.time_spent += t
 
 class Simulator:
     def __init__(self, gsmp: Gsmp):
@@ -298,7 +253,7 @@ class Simulator:
             winning_event = np.random.choice(winning_events)
 
             # Increment timing metrics
-            old_state.time_spent += time_elapsed
+            self.g.update_state_time(old_state, time_elapsed)
             self.total_time += time_elapsed
 
             # Select new state

@@ -136,6 +136,18 @@ class Gsmp(metaclass=ABCMeta):
         """Returns the distribution function to set the clock of event e in initial state s"""
         raise NotImplementedError
 
+    def get_current_state(self):
+        return self.current_state
+
+    def get_active_events(self):
+        return self.bitmap.get(self.active_events)
+
+    def get_new_state(self, o, e):
+        return np.random.choice(
+            self.current_state.adjacent_nodes,
+            p=[self.p(_s, o, e) for _s in self.current_state.adjacent_nodes]
+        )
+
     def set_current_state(self, new_state, winning_event):
         e = self.current_state.events - self.bitmap.positions[winning_event]
         e_prime = new_state.events
@@ -161,6 +173,8 @@ class Gsmp(metaclass=ABCMeta):
                 )
             except ValueError as E:
                 print(E)
+
+
 
 class GsmpComposition(Gsmp):
 
@@ -194,15 +208,9 @@ class GsmpComposition(Gsmp):
         def __repr__(self):
             return repr((self.i, self.e))
 
-    def __init__(self, syncs, *gsmps):
+    def __init__(self, *gsmps):
         self.nodes = gsmps  # List of gsmp
-        self.syncs = syncs  # List of tuples - equivalency of events from different gsmp nodes
-        self.states = list(
-            chain.from_iterable(map(lambda s: (g, s), g.states) for g in gsmps)
-        )
-        self.events = list(
-            chain.from_iterable(map(lambda e: (g, e), g.events) for g in gsmps)
-        )
+
 
     def bitmap(self, item):
         g, _ = item
@@ -266,8 +274,8 @@ class Simulator:
 
     def simulate(self, epochs):
         while epochs > 0:
-            old_state = self.g.current_state
-            active_events = self.g.bitmap.get(self.g.active_events)
+            old_state = self.g.get_current_state()
+            active_events = self.g.get_active_events()
 
             """
             Determine winning event
@@ -285,20 +293,18 @@ class Simulator:
             except Exception:
                 pass
             event_index = np.where(tmp == time_elapsed)[0]
+            # Usually there is only 1 winning event, but in the case of a tie, randomly select a winner
             winning_events = [active_events[i] for i in event_index]
             winning_event = np.random.choice(winning_events)
 
+            # Increment timing metrics
             old_state.time_spent += time_elapsed
             self.total_time += time_elapsed
 
-            """
-            Determine next state
-            """
-            new_state = np.random.choice(
-                self.g.current_state.adjacent_nodes,
-                p=[self.g.p(_s, old_state, winning_event) for _s in self.g.current_state.adjacent_nodes]
-            )
+            # Select new state
+            new_state = self.g.get_new_state(old_state, winning_event)
 
+            # Update trackers for next iteration
             self.g.set_current_state(new_state, winning_event)
             self.g.set_old_clock(old_state, time_elapsed)
             self.g.set_new_clocks(old_state, winning_event)

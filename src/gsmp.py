@@ -58,14 +58,11 @@ class Gsmp(metaclass=ABCMeta):
         self.events = events
 
         # define adjacent states
-
         for state in states:
             es = self.e(state)
             state.adjacent_nodes = list(
                 {_s if self.p(_s, state, e) != 0 else None for _s in states for e in es} - {None}
             )
-
-        visited = dict((state, False) for state in states)
 
         self.initial_state = np.random.choice(
             states,
@@ -73,27 +70,30 @@ class Gsmp(metaclass=ABCMeta):
         )
 
         # dfs prune states
-
+        visited = dict((state, False) for state in states)
         def visit(s):
             if not visited[s]:
                 visited[s] = True
                 for _s in s.adjacent_nodes:
                     visit(_s)
-
         visit(self.initial_state)
-
         for state in states:
             if not visited[state]:
                 self.states.remove(state)
-
-        del(visited)
+        del visited
 
         # generate bitmap
-
         self.bitmap = BitMap(events)
         for state in self.states:
             state.set_events(self.bitmap.format(self.e(state)))
-            # print("s={0}, E(s)={1}".format(state, self.e(state)))
+
+        # set trackers
+        self.current_state = self.initial_state
+        self.old_events = 0
+        self.cancelled_events = 0
+        self.new_events = self.current_state.events
+        self.active_events = self.new_events
+        self.set_new_clocks(None, None)
 
     @classmethod
     def __subclasshook__(cls, subclass):
@@ -136,6 +136,31 @@ class Gsmp(metaclass=ABCMeta):
         """Returns the distribution function to set the clock of event e in initial state s"""
         raise NotImplementedError
 
+    def set_current_state(self, new_state, winning_event):
+        e = self.current_state.events - self.bitmap.positions[winning_event]
+        e_prime = new_state.events
+        old_events = e & e_prime
+        new_events = e_prime ^ old_events
+        self.old_events = old_events
+        self.cancelled_events = e ^ old_events
+        self.new_events = new_events
+        self.active_events = old_events | new_events
+        self.current_state = new_state
+
+    def set_old_clock(self, s, t):
+        for _e in self.bitmap.get(self.old_events):
+            _e.tick_down(t * self.r(s, _e))
+
+    def set_new_clocks(self, s, e):
+        _s = self.current_state
+        for _e in self.bitmap.get(self.new_events):
+            try:
+                _e.set_clock(
+                    self.f_0(_e, _s) if _s == self.initial_state else
+                    self.f(_s, _e, s, e)
+                )
+            except ValueError as E:
+                print(E)
 
 class GsmpComposition(Gsmp):
 
@@ -172,29 +197,33 @@ class GsmpComposition(Gsmp):
     def __init__(self, syncs, *gsmps):
         self.nodes = gsmps  # List of gsmp
         self.syncs = syncs  # List of tuples - equivalency of events from different gsmp nodes
-        states = list(
-            ... for g in gsmps
+        self.states = list(
+            chain.from_iterable(map(lambda s: (g, s), g.states) for g in gsmps)
+        )
+        self.events = list(
+            chain.from_iterable(map(lambda e: (g, e), g.events) for g in gsmps)
         )
 
+    def bitmap(self, item):
+        g, _ = item
+        return g.bitmap
+
     def e(self, s) -> list:
-        pass
+        g, s = s
+        return list(map(lambda e: (g, e), g.e(s)))
 
     def p(self, _s, s, e) -> float:
-        p = list(int(x == y) for x, y in zip(_s, s))
+        g, s = s
+        _g, _s = _s
+        __g, e = e
+        if g == _g == __g:
+            return g.p(_s, s, e)
+        if __g == g:
+            ...
+        if __g == _g:
+            ...
 
-        es = [e]
-        try:
-            es.extend(self.syncs[(e.g, e.e)])
-            pass
-        except KeyError:
-            pass
-        finally:
-            for _g, _e in es:
-                i = self.gsmps.index(_g)
-                p[i] = _g.p(_s[i], s[i], _e)
-
-        import math
-        return math.prod(p)
+        return 0
 
     def f(self, _s, _e, s, e) -> float:
         es = [e]
@@ -232,54 +261,13 @@ class GsmpComposition(Gsmp):
 
 class Simulator:
     def __init__(self, gsmp: Gsmp):
-        self.gsmp = gsmp
-
-        self.initial_state = np.random.choice(
-            gsmp.states,
-            p=[gsmp.s_0(_s) for _s in gsmp.states]
-        )
-        self.initial_distribution = gsmp.f_0
-
-        self.current_state = self.initial_state
-        self.old_events = 0
-        self.cancelled_events = 0
-        self.new_events = self.current_state.events
-        self.active_events = self.new_events
-
-        self.set_new_clocks(None, None)
-
+        self.g = gsmp
         self.total_time = 0
-
-    def set_current_state(self, new_state, winning_event):
-        e = self.current_state.events - self.gsmp.bitmap.positions[winning_event]
-        e_prime = new_state.events
-        old_events = e & e_prime
-        new_events = e_prime ^ old_events
-        self.old_events = old_events
-        self.cancelled_events = e ^ old_events
-        self.new_events = new_events
-        self.active_events = old_events | new_events
-        self.current_state = new_state
-
-    def set_old_clock(self, s, t):
-        for _e in self.gsmp.bitmap.get(self.old_events):
-            _e.tick_down(t * self.gsmp.r(s, _e))
-
-    def set_new_clocks(self, s, e):
-        _s = self.current_state
-        for _e in self.gsmp.bitmap.get(self.new_events):
-            try:
-                _e.set_clock(
-                    self.gsmp.f_0(_e, _s) if _s == self.initial_state else
-                    self.gsmp.f(_s, _e, s, e)
-                )
-            except ValueError as E:
-                print(E)
 
     def simulate(self, epochs):
         while epochs > 0:
-            old_state = self.current_state
-            active_events = self.gsmp.bitmap.get(self.active_events)
+            old_state = self.g.current_state
+            active_events = self.g.bitmap.get(self.g.active_events)
 
             """
             Determine winning event
@@ -287,7 +275,7 @@ class Simulator:
             tmp = []
             for event in active_events:
                 try:
-                    tmp.append(event.clock / self.gsmp.r(old_state, event))
+                    tmp.append(event.clock / self.g.r(old_state, event))
                 except ZeroDivisionError:
                     pass
                 except ValueError:
@@ -307,15 +295,15 @@ class Simulator:
             Determine next state
             """
             new_state = np.random.choice(
-                self.current_state.adjacent_nodes,
-                p=[self.gsmp.p(_s, old_state, winning_event) for _s in self.current_state.adjacent_nodes]
+                self.g.current_state.adjacent_nodes,
+                p=[self.g.p(_s, old_state, winning_event) for _s in self.g.current_state.adjacent_nodes]
             )
 
-            self.set_current_state(new_state, winning_event)
-            self.set_old_clock(old_state, time_elapsed)
-            self.set_new_clocks(old_state, winning_event)
+            self.g.set_current_state(new_state, winning_event)
+            self.g.set_old_clock(old_state, time_elapsed)
+            self.g.set_new_clocks(old_state, winning_event)
 
             # print("s={0}, e={1}, s'={2}".format(old_state, winning_event, new_state))
 
             epochs -= 1
-        return map(lambda s: s.time_spent / self.total_time, self.gsmp.states)
+        return map(lambda s: s.time_spent / self.total_time, self.g.states)

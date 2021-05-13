@@ -1,11 +1,11 @@
-from src.gsmp import *
+from gsmp import *
 import numpy as np
 from itertools import chain, groupby, product, repeat
 from numpy.linalg import norm
 from operator import itemgetter
 
 
-class ggc(GsmpSpec):
+class ggc(Gsmp):
     def __init__(self, states, events, c, k, dist, arrival_rate, service_rate):
         self.c = c
         self.k = k
@@ -45,9 +45,9 @@ class ggc(GsmpSpec):
 
     def f(self, _s: State, _e: Event, s: State, e: Event) -> float:
         if _e == Event('arr'):
-            return self.dist['arr'](self.arrival_rate)
+            return self.dist['arr'](scale=1 / self.arrival_rate)
         else:
-            return self.dist['com'](self.service_rate)
+            return self.dist['com'](scale=1 / self.service_rate)
 
     def r(self, s: State, e: Event) -> float:
         return 1
@@ -57,7 +57,7 @@ class ggc(GsmpSpec):
 
     def f_0(self, e: Event, s: State) -> float:
         if e == Event('arr') and s == State((0, *repeat(0, self.c))):
-            return np.random.exponential(1)
+            return np.random.exponential(scale=1)
         else:
             raise TypeError
 
@@ -76,7 +76,7 @@ def pi(c, k, l, m):
 
 if __name__ == "__main__":
     c = 1
-    k = 3
+    k = 1
     ss = list(chain(
         (State((0, *t)) for t in product(range(2), repeat=c)),
         (State((i + 1, *repeat(1, c))) for i in range(k))
@@ -88,13 +88,13 @@ if __name__ == "__main__":
             'arr': np.random.exponential,
             'com': np.random.exponential
         },
-        1, 1 / 2
+        1, 2
     )
-    sim = GsmpSimulation(mmc)
-    ps = sim.simulate(5000)
-
-    _ss = map(lambda s: sum(s.label), ss)
-    _ps = map(lambda i: sum(map(lambda j: j[1], i)), (list(g) for _, g in groupby(sorted(zip(_ss, ps)), key=itemgetter(0))))
+    sim = Simulator(mmc)
+    ps = sim.simulate(500)
+    ps = list(ps)
+    _ss = list(map(lambda s: sum(s.label), ss))
+    _ps = list(map(lambda i: sum(map(lambda j: j[1], i)), (list(g) for _, g in groupby(sorted(zip(_ss, ps)), key=itemgetter(0)))))
 
     for y in sorted(zip(range(c + k), _ps, pi(c, c + k, 1, 2)), key=itemgetter(0)):
         print(y)

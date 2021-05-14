@@ -43,3 +43,11 @@ class MM1k(Gsmp):
 
     def f_0(self, e, s):
         return exponential(avg_arrival_time)
+
+    def __repr__(self):
+        return str(self.name)
+
+    def __init__(self, name):
+        super().__init__()
+        self.name = name
+

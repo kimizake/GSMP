@@ -74,6 +74,8 @@ class SimulationObject(metaclass=ABCMeta):
     @classmethod
     def __subclasscheck__(cls, subclass):
         return (
+            hasattr(subclass, 'get_states') and callable(subclass.get_states) and
+            hasattr(subclass, 'get_state_times') and callable(subclass.get_state_times) and
             hasattr(subclass, 'get_current_state') and callable(subclass.get_current_state) and
             hasattr(subclass, 'get_active_events') and callable(subclass.get_active_events) and
             hasattr(subclass, 'choose_winning_event') and callable(subclass.choose_winning_event) and
@@ -84,6 +86,14 @@ class SimulationObject(metaclass=ABCMeta):
             hasattr(subclass, 'set_new_clocks') and callable(subclass.set_new_clocks) or
             NotImplementedError
         )
+
+    @abstractmethod
+    def get_states(self):
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_state_times(self):
+        raise NotImplementedError
 
     @abstractmethod
     def get_current_state(self):
@@ -113,14 +123,15 @@ class SimulationObject(metaclass=ABCMeta):
     def set_new_clocks(self, o, e):
         raise NotImplementedError
 
-    @staticmethod
     @abstractmethod
-    def update_state_time():
+    def update_state_time(self, s, t):
         raise NotImplementedError
 
 
 class GsmpWrapper(SimulationObject):
-
+    """
+    Proxy class to add simulation function to user defined GSMP
+    """
     __gsmp__ = None
 
     def __init__(self, obj):
@@ -204,6 +215,9 @@ class GsmpWrapper(SimulationObject):
     def get_states(self):
         return self.__states
 
+    def get_state_times(self):
+        return [state.time_spent for state in self.get_states()]
+
     def get_events(self):
         return self.__events
         # return dict(event.get_hash_value() for event in self.__events)
@@ -261,8 +275,7 @@ class GsmpWrapper(SimulationObject):
                 self._f(_s, _e, s, e)
             )
 
-    @staticmethod
-    def update_state_time(s, t):
+    def update_state_time(self, s, t):
         s.time_spent += t
 
 
@@ -414,8 +427,14 @@ class Compose(SimulationObject):
         # Field used for output
         self.state_times = dict()
 
-    # def get_states(self):
-    #     return list(chain.from_iterable(node.get_states() for node in self.nodes))
+    def get_states(self):
+        from itertools import product
+        # This takes the cartesian product of the states, therefore it is really slow
+        return product(*(node.get_states() for node in self.nodes))
+        # return list(chain.from_iterable(node.get_states() for node in self.nodes))
+
+    def get_state_times(self):
+        return [self.state_times[state] if state in self.state_times else 0 for state in self.get_states()]
 
     def get_current_state(self):
         """
@@ -548,4 +567,4 @@ class Simulator:
             # print("event {0} fired at time {1} ------- new state {2}".format(winning_event, self.total_time, self.g.get_current_state()))
 
             epochs -= 1
-        # return map(lambda s: s.time_spent / self.total_time, self.g.get_states())
+        return map(lambda t: t / self.total_time, self.g.get_state_times())

@@ -6,7 +6,7 @@ import numpy as np
 k = 20
 arrival_rate = 1
 service_rate = 2
-epochs = 20000
+epochs = 1000
 
 
 def mmc_p(p0, n, c, rho):
@@ -37,8 +37,8 @@ if __name__ == "__main__":
 
     # Run the simulations
     sim = Simulator(tq1)
-    sim.simulate(epochs)
-
+    sim.simulate(epochs)       # returns state probabilities, e.g. p(being in state (0, 0)) is ...
+                               # so in this scenario these values dont matter
     sim2 = Simulator(tq2)
     sim2.simulate(epochs)
 
@@ -64,31 +64,24 @@ if __name__ == "__main__":
         ax.legend()
 
     # generate plots from composed queues
-    def pull_names(ss):
-        return list(map(lambda s: s.name, ss))
-
-    def pull_times(ss):
-        return map(lambda s: s.time_spent, ss)
-
-    def pull_probs(ts, time):
+    def calculate_probabilities(ts, time):
         return list(map(lambda t: t / time, ts))
 
-    x = pull_names(q1.get_states())
-    y1 = pull_probs(pull_times(q1.get_states()), sim.total_time)
-    y2 = pull_probs(pull_times(q2.get_states()), sim.total_time)
+    y1 = calculate_probabilities(q1.get_state_times(), sim.total_time)        # generates probabilities from queue 1
+    y2 = calculate_probabilities(q2.get_state_times(), sim.total_time)        # probabilities from queue 2
     print_plots(y1, 'Queue 1 composition')
     print_plots(y2, 'Queue 2 composition')
 
     # format results from tq2 test
-    states = np.array(tq2.get_states()).reshape((k + 1, k + 1))     # convert flat list to 2d array
+    states = np.array(tq2.get_state_times()).reshape((k + 1, k + 1))     # convert flat list to 2d array
     # sum the time values across the rows and columns of the states 2d array to obtain the cumulative time spent
     # for each queue in each state
-    t1 = [sum(map(lambda s: s.time_spent, states[i, :])) for i in range(k + 1)]
-    t2 = [sum(map(lambda s: s.time_spent, states[:, i])) for i in range(k + 1)]
+    t1 = [sum(states[i, :]) for i in range(k + 1)]
+    t2 = [sum(states[:, i]) for i in range(k + 1)]
     del states
 
-    y3 = pull_probs(t1, sim2.total_time)
-    y4 = pull_probs(t2, sim2.total_time)
+    y3 = calculate_probabilities(t1, sim2.total_time)
+    y4 = calculate_probabilities(t2, sim2.total_time)
 
     print_plots(y3, 'Queue 1 normal')
     print_plots(y4, 'Queue 2 normal')

@@ -1,7 +1,7 @@
-from src.gsmp import Gsmp
+from gsmp import Gsmp
 from numpy.random import exponential
 
-k = 50
+k = 20
 arrival_rate = 1
 service_rate = 2
 avg_arrival_time = 1 / arrival_rate
@@ -9,7 +9,6 @@ avg_service_time = 1 / service_rate
 
 
 class MM1k(Gsmp):
-
     def states(self):
         return range(k + 1)
 
@@ -24,7 +23,7 @@ class MM1k(Gsmp):
             es.append('com')
         return es
 
-    def p(self, _s, e, s):
+    def p(self, _s, s, e):
         if e == 'arr':
             return int(s + 1 == _s)
         else:
@@ -38,6 +37,9 @@ class MM1k(Gsmp):
 
     def r(self, s, e):
         return 1
+
+    def s_0(self, s):
+        return int(s == 0)
 
     def f_0(self, e, s):
         return exponential(avg_arrival_time)

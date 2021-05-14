@@ -1,8 +1,8 @@
-from gsmp import Gsmp, GsmpComposition, Simulator
+from gsmp import GsmpComposition, Simulator
 import matplotlib.pyplot as plt
 import numpy as np
 
-k = 10
+k = 20
 arrival_rate = 1
 service_rate = 2
 epochs = 2000
@@ -19,7 +19,7 @@ def mmc_p(p0, n, c, rho):
 if __name__ == "__main__":
     # Define a simple tandem queue with 2 mm1k queues
 
-    from examples.mm1k import MM1k
+    from mm1k import MM1k
     # Define our 2 mm1k queues
     q1, q2 = MM1k(), MM1k()
 
@@ -29,7 +29,7 @@ if __name__ == "__main__":
         # [('com', q3), ('arr', q4)]
     ])
 
-    from examples.tandem_queue import Tandem_queue
+    from tandem_queue import Tandem_queue
 
     tq2 = Tandem_queue()
 

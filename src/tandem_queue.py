@@ -1,10 +1,9 @@
 from gsmp import Gsmp
 from numpy.random import exponential
 
-k = 10
+k = 20
 arrival_rate = 1
 service_rate = 2
-
 avg_arrival_time = 1 / arrival_rate
 avg_service_time = 1 / service_rate
 

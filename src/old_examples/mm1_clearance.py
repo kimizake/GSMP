@@ -22,7 +22,7 @@ States.append(State(
 
 
 def r(state, event):
-    if event in bitmap.get(state.events):
+    if event in bitmap.get(state.__events):
         return 1
     else:
         raise ValueError

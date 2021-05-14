@@ -9,7 +9,7 @@ class BitMap:
     def get(self, num):
         string = bin(num)[2:].zfill(self.size)
         assert len(string) == self.size
-        return [item for item in self.items if string[self.items.index(item)] == '1']
+        return (item for item in self.items if string[self.items.index(item)] == '1')
 
     def format(self, objects):
         assert set(objects).issubset(self.items)

@@ -1,7 +1,7 @@
 import pytest
 import numpy as np
-from src.gsmp import GsmpSimulation, GsmpSpec
-from src.mg1_example import Mg1
+from src.gsmp import Simulator, Gsmp
+from old_examples.mg1_example import Mg1
 
 
 @pytest.fixture(scope="function", params=[
@@ -18,14 +18,14 @@ def gsmp_spec(request):
 @pytest.mark.parametrize("arrival_rate", [1])
 @pytest.mark.parametrize("service_rate", [2])
 @pytest.mark.parametrize("state_transitions", [3000])
-def test_mean_queue_length(gsmp_spec: GsmpSpec, arrival_rate: float, service_rate: float, state_transitions: int):
-    simulation = GsmpSimulation(gsmp_spec)
+def test_mean_queue_length(gsmp_spec: Gsmp, arrival_rate: float, service_rate: float, state_transitions: int):
+    simulation = Simulator(gsmp_spec)
     simulation_time = simulation.simulate(state_transitions)
 
     from functools import reduce
     average_queue_length = reduce(
         lambda x, y: x + y,
-        [state.label for state in gsmp_spec.states]
+        [state.name for state in gsmp_spec.__states]
     ) / simulation_time
 
     expected_queue_length = pk_mean_queue_length(arrival_rate, service_rate, gsmp_spec.distribution)

@@ -1,8 +1,7 @@
 from abc import ABCMeta, abstractmethod
-
 import numpy as np
-
 from bitmap import BitMap
+from functools import cache
 
 
 class Event:
@@ -53,7 +52,6 @@ class State:
         self._node = node
         self._val = value
         self.events = None
-        self._adj_states = None
         self.time_spent = 0
 
     def get_name(self):
@@ -61,12 +59,6 @@ class State:
 
     def set_events(self, events):
         self.events = events
-
-    def set_adjacent_states(self, adj_states):
-        self._adj_states = adj_states
-
-    def get_adjacent_states(self):
-        return self._adj_states
 
     def __eq__(self, other):
         return isinstance(other, State) and self._node == other._node and self._val == other._val
@@ -174,11 +166,26 @@ class GsmpWrapper(SimulationObject):
         del states
         del probabilities
 
+        if adjacent_states is not None:
+            self._get_adj_states = lambda s: (
+                State(self.__gsmp__, val) for val in adjacent_states(*GsmpWrapper.get_names(s))
+            )
+        else:
+            # The default get_adjacent_state function has to iterate over the entire state space and event set
+            self._get_adj_states = lambda s: \
+                {_s if self._p(_s, s, e) != 0 else None for _s in self.get_states() for e in self._e(s)} - {None}
+
         if infinite:
             self._states = [self.initial_state]
-            self._adj_states = lambda s: (State(self.__gsmp__, val)
-                                          for val in adjacent_states(*GsmpWrapper.get_names(s)))
         else:
+            # Define states
+            self._states = [State(self.__gsmp__, val) for val in self.__gsmp__.states()]
+
+            # Replace initial state with the original instance
+            i = self._states.index(self.initial_state)
+            self._states.pop(i)
+            self._states.insert(i, self.initial_state)
+
             self.__prune_state_space__()
 
         # generate bitmap
@@ -195,31 +202,20 @@ class GsmpWrapper(SimulationObject):
         self.set_new_clocks(None, None)
 
     def __prune_state_space__(self):
-        # Define states
-        self._states = [State(self.__gsmp__, val) for val in self.__gsmp__.states()]
-
-        # Replace initial state with the original instance
-        i = self._states.index(self.initial_state)
-        self._states.pop(i)
-        self._states.insert(i, self.initial_state)
-
-        # Define default adjacent state function
-        self._adj_states = lambda s: {_s if self._p(_s, s, e) != 0 else None for _s in self.get_states() for e in
-                                         self._e(s)} - {None}
-
         # dfs prune states
         visited = {s: False for s in self._states}
 
         def visit(s):
             if not visited[s]:
                 visited[s] = True
-                for _s in self._get_adj_states(s):
+                for _s in self.get_adj_states(s):
                     visit(_s)
 
         visit(self.initial_state)
         for state in self._states:
             if not visited[state]:
                 self._states.remove(state)
+                del state
         del visited
 
     # Define wrapper functions
@@ -250,22 +246,19 @@ class GsmpWrapper(SimulationObject):
 
     def get_states(self):
         return self._states if hasattr(self, '_states') else (State(self.__gsmp__, val) for val in
-                                                               self.__gsmp__.states())
-        # Return generator to build state list
-        # return (State(index, name) for index, name in enumerate(self.__gsmp__.states()))
+                                                              self.__gsmp__.states())
 
-    def _get_adj_states(self, state):
-        if state.get_adjacent_states() is None:
-            # If adjacent states haven't been defined
-            def switch(s):
-                try:
-                    return self._states[self._states.index(s)]    # Get the original pointer to the state object
-                except ValueError:  # State hasn't been created yet
-                    self._states.append(s)
-                    s.set_events(self.bitmap.format(self._e(s)))
-                    return s
-            state.set_adjacent_states(list(map(switch, self._adj_states(state))))     # Cache adjacent states
-        return state.get_adjacent_states()
+    @cache
+    def get_adj_states(self, state):
+        def clean(s):
+            try:
+                return self._states[self._states.index(s)]  # Get the original pointer to the state object
+            except ValueError:  # State hasn't been created yet
+                self._states.append(s)
+                s.set_events(self.bitmap.format(self._e(s)))
+                return s
+        # Want to 'clean' the output from the internal _get_adj_states function
+        return list(map(clean, self._get_adj_states(state)))
 
     def get_events(self):
         return self._events
@@ -283,7 +276,7 @@ class GsmpWrapper(SimulationObject):
         return list(self.bitmap.get(self.active_events))
 
     def get_new_state(self, o, e):
-        adj_states = self._get_adj_states(self.get_current_state())
+        adj_states = self.get_adj_states(self.get_current_state())
         return np.random.choice(
             adj_states,
             p=[self._p(_s, o, e) for _s in adj_states]
@@ -514,6 +507,13 @@ class Compose(SimulationObject):
         del event_counter
         return set(active_events)  # Remove duplicates
 
+    @cache
+    def get_adj_states(self, state):
+        from itertools import product
+        return list(product(*(
+            self.nodes[i].get_adj_states(s_i) for i, s_i in enumerate(state)
+        )))
+
     def get_new_state(self, o, e):
         """
         Given a list of old states and a singular event,
@@ -523,13 +523,12 @@ class Compose(SimulationObject):
 
         def compose_new_state_vector(arg):
             index, event = arg
-            if e.shared and self.p:
+            if e.shared and self.p is not None:
                 # compute all possible adjacent vector states
-                from itertools import product
-                adjacent_states = product(*(s_i.adjacent_nodes for s_i in o))
+                adj_states = self.get_adj_states(o)
                 return np.random.choice(
-                    adjacent_states,
-                    p=[self.p(_s, o, e) for _s in adjacent_states]
+                    adj_states,
+                    p=[self.p(_s, o, e) for _s in adj_states]
                 )
             return self.nodes[index].get_new_state(o[index], event)
 

@@ -542,23 +542,17 @@ class Compose(SimulationObject):
         :return: winning, time passed
         """
 
-        # Need to process es to extract index info
-        _es = {}
-        for e in es:
-            i, _ = self.find_gsmp[e][0]
-            if i not in _es:
-                _es[i] = [e]
-            else:
-                _es[i].append(e)
+        def get_time_deltas(event):
+            if event.shared and self.r is not None:
+                return event.get_clock() / self.r(o, event)
+            i, _event = self.find_gsmp[event][0]    # default behavior is to go to the first gsmp node
+            return event.get_clock() / self.nodes[i]._r(o[i], _event)
 
-        # Event handling for custom rate functions
-        # Not yet implemented
-        # def handle_shared_events(...):
-        #     return
-
-        ttl = dict(self.nodes[index].choose_winning_event(o[index], events) for index, events in _es.items())
-        winner = min(ttl, key=ttl.get)
-        return winner, ttl[winner]
+        time_deltas = list(map(get_time_deltas, es))    # calculate how long each active event spends in current state
+        winning_time = np.amin(time_deltas)             # take the minimum time
+        winning_index = np.where(time_deltas == winning_time)[0]    # In case multiple events 'win'
+        winning_events = [es[i] for i in winning_index]             # Randomly select one of those events
+        return np.random.choice(winning_events), winning_time       # Typically only one event wins.
 
     def set_current_state(self, s, e):
         """

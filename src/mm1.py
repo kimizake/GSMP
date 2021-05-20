@@ -54,23 +54,15 @@ queue = MM1(
 if __name__ == "__main__":
     from gsmp import Simulator
     epochs = 10000
-    sim = Simulator(queue)
-    sim.simulate(epochs)
-    states = list(map(
-        lambda s: s.get_name(),
-        queue.get_states()
-    ))
-    time = queue.get_state_times()
+
+    states, holding_times, total_time = Simulator(queue).run(epochs)    # generate results
 
     expected_probabilities = list(map(       # Expected M/M/1 probabilities
         lambda n: (1 - rho) * rho ** n,
         states
     ))
 
-    observed_probabilities = list(map(       # Estimate probabilities based on the time occupied by each state
-        lambda t: t / sim.total_time,
-        time
-    ))
+    observed_probabilities = holding_times / total_time     # Estimate probabilities based on holding times
 
     # Make some graphs
     from matplotlib import pyplot as plt

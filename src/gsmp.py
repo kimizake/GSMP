@@ -52,7 +52,6 @@ class State:
         self._node = node
         self._val = value
         self.events = None
-        self.time_spent = 0
 
     def get_name(self):
         return self._val
@@ -76,24 +75,19 @@ class SimulationObject(metaclass=ABCMeta):
     def __subclasscheck__(cls, subclass):
         return (
                 hasattr(subclass, 'get_states') and callable(subclass.get_states) and
-                hasattr(subclass, 'get_state_times') and callable(subclass.get_state_times) and
                 hasattr(subclass, 'get_current_state') and callable(subclass.get_current_state) and
                 hasattr(subclass, 'get_active_events') and callable(subclass.get_active_events) and
                 hasattr(subclass, 'choose_winning_event') and callable(subclass.choose_winning_event) and
-                hasattr(subclass, 'update_state_time') and callable(subclass.update_state_time) and
                 hasattr(subclass, 'get_new_state') and callable(subclass.get_new_state) and
                 hasattr(subclass, 'set_current_state') and callable(subclass.set_current_state) and
                 hasattr(subclass, 'set_old_clocks') and callable(subclass.set_old_clocks) and
-                hasattr(subclass, 'set_new_clocks') and callable(subclass.set_new_clocks) or
+                hasattr(subclass, 'set_new_clocks') and callable(subclass.set_new_clocks) and
+                hasattr(subclass, 'parse_state') and callable(subclass.parse_state) or
                 NotImplementedError
         )
 
     @abstractmethod
     def get_states(self):
-        raise NotImplementedError
-
-    @abstractmethod
-    def get_state_times(self):
         raise NotImplementedError
 
     @abstractmethod
@@ -124,10 +118,10 @@ class SimulationObject(metaclass=ABCMeta):
     def set_new_clocks(self, o, e):
         raise NotImplementedError
 
+    @staticmethod
     @abstractmethod
-    def update_state_time(self, s, t):
+    def parse_state(state):
         raise NotImplementedError
-
 
 class GsmpWrapper(SimulationObject):
     """
@@ -249,6 +243,10 @@ class GsmpWrapper(SimulationObject):
         return self._states if hasattr(self, '_states') else (State(self.__gsmp__, val) for val in
                                                               self.__gsmp__.states())
 
+    @staticmethod
+    def parse_state(state):
+        return state.get_name()
+
     @cache
     def get_adj_states(self, state):
         def clean(s):
@@ -264,9 +262,6 @@ class GsmpWrapper(SimulationObject):
 
     def get_events(self):
         return self._events
-
-    def get_state_times(self):
-        return [state.time_spent for state in self.get_states()]
 
     def get_current_state(self):
         return self.current_state
@@ -311,7 +306,6 @@ class GsmpWrapper(SimulationObject):
         old_events = e & e_prime
         new_events = e_prime - old_events
         self.old_events = old_events
-        # self.cancelled_events = e ^ old_events
         self.new_events = new_events
         self.active_events = old_events | new_events
         self.current_state = new_state
@@ -325,9 +319,6 @@ class GsmpWrapper(SimulationObject):
         # it has already been set as the current state
         for _e in self.get_new_events():
             _e.set_clock(self._f(_s, _e, s, e))
-
-    def update_state_time(self, s, t):
-        s.time_spent += t
 
 
 class Gsmp(GsmpWrapper, metaclass=ABCMeta):
@@ -437,11 +428,22 @@ class Compose(SimulationObject):
     therefore the user has the choice of yielding setter functions for probability, clock distributions and rates.
     """
 
+    _p = None
+    _f = None
+    _r = None
+
     def __init__(self, *args, synchros=None, p=None, f=None, r=None):
         self.nodes = args
 
-        # Support for custom functions not yet added
-        self.p, self.f, self.r = p, f, r
+        # Wrap the stochastic functions.
+        def func(state_vector):
+            return [state.get_name() for state in state_vector]
+        if p:
+            self._p = lambda _s, e, s: p(func(_s), e.get_name(), func(s))
+        if f:
+            self._f = lambda _s, _e, s, e: f(func(_s), _e.get_name(), func(s), e.get_name())
+        if r:
+            self._r = lambda s, e: r(func(s), e.get_name())
 
         def get_event_from_tuple(name, node):
             return {event.get_name(): event for event in node.get_events()}[name]
@@ -477,17 +479,15 @@ class Compose(SimulationObject):
         # By storing the index instead of a pointer to the node, it makes it easy to work with state vectors.
         self.find_gsmp = find_gsmp
 
-        # Field used for output
-        self.state_times = dict()
-
     def get_states(self):
         from itertools import product
         # This takes the cartesian product of the states, therefore it is really slow
         return product(*(node.get_states() for node in self.nodes))
         # return list(chain.from_iterable(node.get_states() for node in self.nodes))
 
-    def get_state_times(self):
-        return [self.state_times[state] if state in self.state_times else 0 for state in self.get_states()]
+    @staticmethod
+    def parse_state(states):
+        return [state.get_name() for state in states]
 
     def get_current_state(self):
         """
@@ -505,9 +505,10 @@ class Compose(SimulationObject):
         event_counter = Counter(active_events)
 
         def determine(e):
-            if e.shared:
-                return len(self.shared_events[e]) == event_counter[e]
-            return True
+            # if e.shared:
+            #     return len(self.shared_events[e]) == event_counter[e]
+            # return True
+            return not e.shared or len(self.shared_events[e]) == event_counter[e]
 
         active_events[:] = filter(determine, active_events)  # Filter out inactive shared events
         del event_counter
@@ -526,15 +527,14 @@ class Compose(SimulationObject):
         go to the active nodes and call new state
         Return a list of just the updated states
         """
-
         def compose_new_state_vector(arg):
             index, event = arg
-            if e.shared and self.p is not None:
+            if e.shared and self._p is not None:
                 # compute all possible adjacent vector states
                 adj_states = self.get_adj_states(o)
                 return np.random.choice(
                     adj_states,
-                    p=[self.p(_s, o, e) for _s in adj_states]
+                    p=[self._p(_s, o, e) for _s in adj_states]
                 )
             return self.nodes[index].get_new_state(o[index], event)
 
@@ -547,10 +547,9 @@ class Compose(SimulationObject):
         :param es: list of active events
         :return: winning, time passed
         """
-
         def get_time_deltas(event):
-            if event.shared and self.r is not None:
-                return event.get_clock() / self.r(o, event)
+            if event.shared and self._r is not None:
+                return event.get_clock() / self._r(o, event)
             i, _event = self.find_gsmp[event][0]  # default behavior is to go to the first gsmp node
             return event.get_clock() / self.nodes[i]._r(o[i], _event)
 
@@ -573,8 +572,8 @@ class Compose(SimulationObject):
         """
         for i, node in enumerate(self.nodes):
             for event in node.get_old_events():
-                if event.shared and self.r is not None:
-                    event.tick_down(t * self.r(s, event))
+                if event.shared and self._r is not None:
+                    event.tick_down(t * self._r(s, event))
                 else:
                     event.tick_down(t * node._r(s[i], event))
 
@@ -586,8 +585,8 @@ class Compose(SimulationObject):
         for i, _e in self.find_gsmp[e]:
             node = self.nodes[i]
             for new_event in node.get_new_events():
-                if new_event.shared and self.f is not None:
-                    new_event.set_clock(self.f(
+                if new_event.shared and self._f is not None:
+                    new_event.set_clock(self._f(
                         new_state, new_event,
                         s, e
                     ))
@@ -597,44 +596,45 @@ class Compose(SimulationObject):
                         s[i], _e
                     ))
 
-    def update_state_time(self, s, t):
-        for _s in s:
-            _s.time_spent += t
-        s = tuple(s)
-        if s not in self.state_times:
-            self.state_times[s] = t
-        else:
-            self.state_times[s] += t
-
-    def get_probability_distribution(self, total_time):
-        return list(map(lambda state, holding_time: (state, holding_time / total_time), self.state_times.items()))
-
 
 class Simulator:
     def __init__(self, gsmp: SimulationObject):
         self.g = gsmp
-        self.total_time = 0
 
-    def simulate(self, epochs):
+    def run(self, epochs):
+        """
+        Generate a sample path through the GSMP state space.
+        :param epochs: positive integer specifies number of event firings.
+        :return:
+        """
+        state_holding_times = {}
+        total_time = 0
         while epochs > 0:
+            # Get old state and active events
             old_state = self.g.get_current_state()
             active_events = self.g.get_active_events()
-
-            winning_event, time_elapsed = self.g.choose_winning_event(old_state, active_events)
+            # Select trigger event and find time from last event
+            trigger_event, time_delta = self.g.choose_winning_event(old_state, active_events)
+            # Select new state
+            new_state = self.g.get_new_state(old_state, trigger_event)
+            # Update state trackers for next iteration
+            self.g.set_current_state(new_state, trigger_event)
+            # Update clocks for next loop
+            self.g.set_old_clocks(old_state, time_delta)
+            self.g.set_new_clocks(old_state, trigger_event)
 
             # Increment timing metrics
-            self.g.update_state_time(old_state, time_elapsed)
-            self.total_time += time_elapsed
+            if old_state not in state_holding_times:
+                state_holding_times[old_state] = 0
+            state_holding_times[old_state] += time_delta
+            total_time += time_delta
 
-            # Select new state
-            new_state = self.g.get_new_state(old_state, winning_event)
-
-            # Update trackers for next iteration
-            self.g.set_current_state(new_state, winning_event)
-            self.g.set_old_clocks(old_state, time_elapsed)
-            self.g.set_new_clocks(old_state, winning_event)
-
-            # print("event {0} fired at time {1} ------- new state {2}".format(winning_event, self.total_time, self.g.get_current_state()))
+            # print("event {0} fired at time {1} ------- new state {2}".format(
+            # winning_event, self.total_time, self.g.get_current_state()))
 
             epochs -= 1
-        # return map(lambda t: t / self.total_time, self.g.get_state_times())
+        return (
+            list(map(self.g.parse_state, state_holding_times)),     # observed states
+            list(state_holding_times.values()),                     # holding times
+            total_time                                              # total simulation time
+        )

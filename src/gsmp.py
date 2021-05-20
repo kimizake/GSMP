@@ -74,6 +74,7 @@ class SimulationObject(metaclass=ABCMeta):
     @classmethod
     def __subclasscheck__(cls, subclass):
         return (
+                hasattr(subclass, 'reset') and callable(subclass.reset) and
                 hasattr(subclass, 'get_states') and callable(subclass.get_states) and
                 hasattr(subclass, 'get_current_state') and callable(subclass.get_current_state) and
                 hasattr(subclass, 'get_active_events') and callable(subclass.get_active_events) and
@@ -85,6 +86,10 @@ class SimulationObject(metaclass=ABCMeta):
                 hasattr(subclass, 'parse_state') and callable(subclass.parse_state) or
                 NotImplementedError
         )
+
+    @abstractmethod
+    def reset(self):
+        raise NotImplementedError
 
     @abstractmethod
     def get_states(self):
@@ -123,11 +128,18 @@ class SimulationObject(metaclass=ABCMeta):
     def parse_state(state):
         raise NotImplementedError
 
+
 class GsmpWrapper(SimulationObject):
     """
     Proxy class to add simulation function to user defined GSMP
     """
     __gsmp__ = None
+    _states = None
+    _events = None
+    current_state = None
+    old_events = None
+    new_events = None
+    active_events = None
 
     def __init__(self, obj, infinite=False, adjacent_states=None):
         # TODO: add a save feature after pre-processing
@@ -136,29 +148,10 @@ class GsmpWrapper(SimulationObject):
             raise TypeError('wrapped object must be of type %s' % Gsmp)
         self.__gsmp__ = obj
 
+        self._infinite = infinite
+
         # Construct state and event objects
         self._events = [Event(self, name) for name in self.__gsmp__.events()]
-
-        # choose initial state
-        def predicate(iter):
-            sum = 0
-            while sum < 1:
-                s, p = next(iter)
-                sum += p
-                yield s, p
-            if sum > 1:
-                raise ValueError('Invalid pdf')
-            return
-
-        generator = predicate(map(lambda s: (s, self._s_0(s)), self.get_states()))
-        states, probabilities = zip(*generator)
-        del generator
-        initial_state = np.random.choice(
-            states,
-            p=probabilities
-        )
-        del states
-        del probabilities
 
         if adjacent_states is not None:
             self._get_adj_states = lambda s: (
@@ -169,7 +162,30 @@ class GsmpWrapper(SimulationObject):
             self._get_adj_states = lambda s: \
                 {_s if self._p(_s, s, e) != 0 else None for _s in self.get_states() for e in self._e(s)} - {None}
 
-        if infinite:
+        # Create event bitmap - the precondition here is that the event set is finite and < bit count
+        self.bitmap = BitMap(self._events)
+
+    def reset(self):
+        # choose initial state
+        def take_candidates(_iter):
+            _sum = 0
+            while _sum < 1:
+                s, p = next(_iter)
+                _sum += p
+                yield s, p
+            if _sum > 1:
+                raise ValueError('Invalid pdf for initial state distribution')
+            return
+
+        # only take states
+        states, probabilities = zip(*take_candidates(map(lambda s: (s, self._s_0(s)), self.get_states())))
+        initial_state = np.random.choice(
+            states,
+            p=probabilities
+        )
+        del states, probabilities
+
+        if self._infinite:
             self._states = [initial_state]
         else:
             # Define states
@@ -180,10 +196,23 @@ class GsmpWrapper(SimulationObject):
             self._states.pop(i)
             self._states.insert(i, initial_state)
 
-            self.__prune_state_space__(initial_state)
+            # dfs prune states
+            visited = {s: False for s in self._states}
 
-        # generate bitmap
-        self.bitmap = BitMap(self._events)
+            def visit(s):
+                if not visited[s]:
+                    visited[s] = True
+                    for _s in self.get_adj_states(s):
+                        visit(_s)
+
+            visit(initial_state)
+            for state in self._states:
+                if not visited[state]:
+                    self._states.remove(state)
+                    del state
+            del visited
+
+        # bitmap config
         for state in self._states:
             state.set_events(self.bitmap.format(self._e(state)))
 
@@ -195,23 +224,6 @@ class GsmpWrapper(SimulationObject):
         # set initial clocks
         for event in self.get_new_events():
             event.set_clock(self._f_0(event, initial_state))
-
-    def __prune_state_space__(self, initial_state):
-        # dfs prune states
-        visited = {s: False for s in self._states}
-
-        def visit(s):
-            if not visited[s]:
-                visited[s] = True
-                for _s in self.get_adj_states(s):
-                    visit(_s)
-
-        visit(initial_state)
-        for state in self._states:
-            if not visited[state]:
-                self._states.remove(state)
-                del state
-        del visited
 
     # Define wrapper functions
     @staticmethod
@@ -240,8 +252,7 @@ class GsmpWrapper(SimulationObject):
         return self.__gsmp__.f_0(*GsmpWrapper.get_names(*args))
 
     def get_states(self):
-        return self._states if hasattr(self, '_states') else (State(self.__gsmp__, val) for val in
-                                                              self.__gsmp__.states())
+        return self._states if self._states else (State(self.__gsmp__, val) for val in self.__gsmp__.states())
 
     @staticmethod
     def parse_state(state):
@@ -601,27 +612,22 @@ class Simulator:
     def __init__(self, gsmp: SimulationObject):
         self.g = gsmp
 
-    def run(self, epochs):
+    def run(self, epochs, warmup=0):
         """
-        Generate a sample path through the GSMP state space.
-        :param epochs: positive integer specifies number of event firings.
-        :return:
+        Run a new simulation, generates sample paths through the GSMP state spaces
+        :param epochs: number of event firings
+        :param warmup: 'warmup' epochs
+        :return: observed states, holding times, total simulation time
         """
+        self.g.reset()
+        self._run(warmup)
+        return self._run(epochs)
+
+    def _run(self, epochs):
         state_holding_times = {}
         total_time = 0
         while epochs > 0:
-            # Get old state and active events
-            old_state = self.g.get_current_state()
-            active_events = self.g.get_active_events()
-            # Select trigger event and find time from last event
-            trigger_event, time_delta = self.g.choose_winning_event(old_state, active_events)
-            # Select new state
-            new_state = self.g.get_new_state(old_state, trigger_event)
-            # Update state trackers for next iteration
-            self.g.set_current_state(new_state, trigger_event)
-            # Update clocks for next loop
-            self.g.set_old_clocks(old_state, time_delta)
-            self.g.set_new_clocks(old_state, trigger_event)
+            old_state, new_state, trigger_event, time_delta = self._generate_path()
 
             # Increment timing metrics
             if old_state not in state_holding_times:
@@ -638,3 +644,19 @@ class Simulator:
             list(state_holding_times.values()),                     # holding times
             total_time                                              # total simulation time
         )
+
+    def _generate_path(self):
+        # Get old state and active events
+        old_state = self.g.get_current_state()
+        active_events = self.g.get_active_events()
+        # Select trigger event and find time from last event
+        trigger_event, time_delta = self.g.choose_winning_event(old_state, active_events)
+        # Select new state
+        new_state = self.g.get_new_state(old_state, trigger_event)
+        # Update state trackers for next iteration
+        self.g.set_current_state(new_state, trigger_event)
+        # Update clocks for next loop
+        self.g.set_old_clocks(old_state, time_delta)
+        self.g.set_new_clocks(old_state, trigger_event)
+
+        return old_state, trigger_event, new_state, time_delta

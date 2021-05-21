@@ -20,7 +20,7 @@ class MM1(Gsmp):
             return ['arr']
         return self.events()
 
-    def p(self, next_state, current_state, event):
+    def p(self, next_state, event, current_state):
         if event == 'arr':
             return int(next_state == current_state + 1)
         else:
@@ -39,7 +39,7 @@ class MM1(Gsmp):
     def s_0(self, state):
         return int(state == 0)
 
-    def f_0(self, event, state):
+    def f_0(self, state, event):
         from numpy.random import exponential
         return exponential(1 / arrival)
 

@@ -23,7 +23,7 @@ class MM1k(Gsmp):
             es.append('com')
         return es
 
-    def p(self, _s, s, e):
+    def p(self, _s, e, s):
         if e == 'arr':
             return int(s + 1 == _s)
         else:
@@ -41,7 +41,7 @@ class MM1k(Gsmp):
     def s_0(self, s):
         return int(s == 0)
 
-    def f_0(self, e, s):
+    def f_0(self, s, e):
         return exponential(avg_arrival_time)
 
     def __repr__(self):

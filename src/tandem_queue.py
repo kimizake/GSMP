@@ -27,7 +27,7 @@ class Tandem_queue(Gsmp):
             es.append('com2')
         return es
 
-    def p(self, _s, s, e):
+    def p(self, _s, e, s):
         x1, y1 = s
         x2, y2 = _s
         if e == 'arr':
@@ -49,5 +49,5 @@ class Tandem_queue(Gsmp):
     def s_0(self, s):
         return int(s == (0, 0))
 
-    def f_0(self, e, s):
+    def f_0(self, s, e):
         return exponential(avg_arrival_time)

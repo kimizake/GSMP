@@ -51,28 +51,6 @@ class Event:
         return str('event ' + self.name + ' at ' + str(self._node))
 
 
-class State:
-    def __init__(self, node, value):
-        self._node = node
-        self._val = value
-        self.events = None
-
-    def get_name(self):
-        return self._val
-
-    def set_events(self, events):
-        self.events = events
-
-    def __eq__(self, other):
-        return isinstance(other, State) and self._node == other._node and self._val == other._val
-
-    def __hash__(self):
-        return hash(self._val)
-
-    def __repr__(self):
-        return str(self._val)
-
-
 class SimulationObject(metaclass=ABCMeta):
 
     @classmethod
@@ -116,20 +94,15 @@ class SimulationObject(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def set_current_state(self, n, e):
+    def set_current_state(self, n):
         raise NotImplementedError
 
     @abstractmethod
-    def set_old_clocks(self, o, t):
+    def set_old_clocks(self, t, n, e, o):
         raise NotImplementedError
 
     @abstractmethod
-    def set_new_clocks(self, o, e):
-        raise NotImplementedError
-
-    @staticmethod
-    @abstractmethod
-    def parse_state(state):
+    def set_new_clocks(self, n, e, o):
         raise NotImplementedError
 
 
@@ -157,17 +130,16 @@ class GsmpWrapper(SimulationObject):
         # Construct state and event objects
         self._events = [Event(self, name) for name in self.__gsmp__.events()]
 
-        if adjacent_states is not None:
-            self._get_adj_states = lambda s: (
-                State(self.__gsmp__, val) for val in adjacent_states(*GsmpWrapper.get_names(s))
-            )
-        else:
-            # The default get_adjacent_state function has to iterate over the entire state space and event set
-            self._get_adj_states = lambda s: \
-                {_s if self._p(_s, s, e) != 0 else None for _s in self.get_states() for e in self._e(s)} - {None}
-
         # Create event bitmap - the precondition here is that the event set is finite and < bit count
         self.bitmap = BitMap(self._events)
+
+        if adjacent_states is not None:
+            self._get_adj_states = adjacent_states
+        else:
+            # The default get_adjacent_state function has to iterate over the entire state space and event set
+            self._get_adj_states = lambda s: {
+                _s for _s in self.get_states() for e in self.bitmap.get(self._e(s)) if self._p(_s, e, s) != 0
+            }
 
     def reset(self):
         # choose initial state
@@ -183,17 +155,17 @@ class GsmpWrapper(SimulationObject):
 
         # only take states
         states, probabilities = zip(*take_candidates(map(lambda s: (s, self._s_0(s)), self.get_states())))
-        initial_state = np.random.choice(
-            states,
+        initial_state = states[np.random.choice(
+            len(states),        # Because numpy requires 1-D array-like value, select from the index
             p=probabilities
-        )
+        )]
         del states, probabilities
 
         if self._infinite:
             self._states = [initial_state]
         else:
             # Define states
-            self._states = [State(self.__gsmp__, val) for val in self.__gsmp__.states()]
+            self._states = list(self.__gsmp__.get_states())
 
             # Replace initial state with the original instance
             i = self._states.index(initial_state)
@@ -216,51 +188,33 @@ class GsmpWrapper(SimulationObject):
                     del state
             del visited
 
-        # bitmap config
-        for state in self._states:
-            state.set_events(self.bitmap.format(self._e(state)))
-
         # set trackers
         self.current_state = initial_state
-        self.old_events = 0
-        self.new_events = self.current_state.events
-        self.active_events = self.new_events
         # set initial clocks
-        for event in self.get_new_events():
-            event.set_clock(self._f_0(event, initial_state))
+        for event in self.get_active_events():
+            event.set_clock(self._f_0(initial_state, event))
 
-    # Define wrapper functions
-    @staticmethod
-    def get_names(*args):
-        def get_name(param):
-            return param.get_name()
+    @cache
+    def _e(self, state):
+        return self.bitmap.format([Event(self, name) for name in self.__gsmp__.e(state)])
 
-        return tuple(map(get_name, args))
+    def _p(self, next_state, event, old_state):
+        return self.__gsmp__.p(next_state, event.get_name(), old_state)
 
-    def _e(self, *args):
-        return [Event(self, name) for name in self.__gsmp__.e(*Gsmp.get_names(*args))]
+    def _f(self, next_state, new_event, old_state, trigger_event):
+        return self.__gsmp__.f(next_state, new_event.get_name(), old_state, trigger_event.get_name())
 
-    def _p(self, *args):
-        return self.__gsmp__.p(*GsmpWrapper.get_names(*args))
+    def _r(self, state, event):
+        return self.__gsmp__.r(state, event.get_name())
 
-    def _f(self, *args):
-        return self.__gsmp__.f(*GsmpWrapper.get_names(*args))
+    def _s_0(self, state):
+        return self.__gsmp__.s_0(state)
 
-    def _r(self, *args):
-        return self.__gsmp__.r(*GsmpWrapper.get_names(*args))
-
-    def _s_0(self, *args):
-        return self.__gsmp__.s_0(*GsmpWrapper.get_names(*args))
-
-    def _f_0(self, *args):
-        return self.__gsmp__.f_0(*GsmpWrapper.get_names(*args))
+    def _f_0(self, state, event):
+        return self.__gsmp__.f_0(state, event.get_name())
 
     def get_states(self):
-        return self._states if self._states else (State(self.__gsmp__, val) for val in self.__gsmp__.states())
-
-    @staticmethod
-    def parse_state(state):
-        return state.get_name()
+        return self._states if self._states else (self.__gsmp__.states())
 
     @cache
     def get_adj_states(self, state):
@@ -269,9 +223,7 @@ class GsmpWrapper(SimulationObject):
                 return self._states[self._states.index(s)]  # Get the original pointer to the state object
             except ValueError:  # State hasn't been created yet
                 self._states.append(s)
-                s.set_events(self.bitmap.format(self._e(s)))
                 return s
-
         # Want to 'clean' the output from the internal _get_adj_states function
         return list(map(clean, self._get_adj_states(state)))
 
@@ -282,56 +234,51 @@ class GsmpWrapper(SimulationObject):
         return self.current_state
 
     def get_active_events(self):
-        return list(self.bitmap.get(self.active_events))
+        return list(self.bitmap.get(self._e(self.current_state)))
 
-    def get_old_events(self):
-        return self.bitmap.get(self.old_events)
+    def get_old_events(self, new_state, trigger_event, old_state):
+        e1 = self._e(old_state)
+        try:
+            e1 -= self.bitmap.positions[trigger_event]
+        except KeyError:
+            pass
+        e2 = self._e(new_state)
+        return self.bitmap.get(e1 & e2)
 
-    def get_new_events(self):
-        return self.bitmap.get(self.new_events)
+    def get_new_events(self, new_state, trigger_event, old_state):
+        e1 = self._e(old_state)
+        try:
+            e1 -= self.bitmap.positions[trigger_event]
+        except KeyError:
+            pass
+        e2 = self._e(new_state)
+        return self.bitmap.get(e2 - (e1 & e2))
 
     def get_new_state(self, o, e):
         adj_states = self.get_adj_states(self.get_current_state())
-        return np.random.choice(
-            adj_states,
-            p=[self._p(_s, o, e) for _s in adj_states]
-        )
+        return adj_states[np.random.choice(
+            len(adj_states),
+            p=[self._p(_s, e, o) for _s in adj_states]
+        )]
 
     def choose_winning_event(self, o, es):
-        tmp = []
-        for e in es:
-            try:
-                tmp.append(e.get_clock() / self._r(o, e))
-            except ZeroDivisionError:
-                pass
-            except ValueError:
-                pass
+        tmp = list(map(lambda e: e.get_clock() / self._r(o, e), es))
         t = np.amin(tmp)
         event_index = np.where(tmp == t)[0]
         # Usually there is only 1 winning event, but in the case of a tie, randomly select a winner
         winning_events = [es[i] for i in event_index]
-        return np.random.choice(winning_events), t
+        return winning_events[np.random.choice(len(winning_events))], t
 
-    def set_current_state(self, new_state, winning_event):
-        e = self.current_state.events
-        e -= self.bitmap.positions[winning_event] if winning_event is not None else 0
-        e_prime = new_state.events
-        old_events = e & e_prime
-        new_events = e_prime - old_events
-        self.old_events = old_events
-        self.new_events = new_events
-        self.active_events = old_events | new_events
+    def set_current_state(self, new_state):
         self.current_state = new_state
 
-    def set_old_clocks(self, s, t):
-        for _e in self.get_old_events():
-            _e.tick_down(t * self._r(s, _e))
+    def set_old_clocks(self, time, new_state, trigger_event, old_state):
+        for old_event in self.get_old_events(new_state, trigger_event, old_state):
+            old_event.tick_down(time * self._r(old_state, old_event))
 
-    def set_new_clocks(self, s, e):
-        _s = self.current_state  # _s is the state we are going into
-        # it has already been set as the current state
-        for _e in self.get_new_events():
-            _e.set_clock(self._f(_s, _e, s, e))
+    def set_new_clocks(self, new_state, trigger_event, old_state):
+        for new_event in self.get_new_events(new_state, trigger_event, old_state):
+            new_event.set_clock(self._f(new_state, new_event, old_state, trigger_event))
 
 
 class Gsmp(GsmpWrapper, metaclass=ABCMeta):
@@ -381,12 +328,12 @@ class Gsmp(GsmpWrapper, metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def p(self, _s, s, e):
+    def p(self, _s, e, s):
         """
         Returns the probability of the next state being _s when event e occurs in state s
         :param _s: next state identifier
-        :param s: current state identifier
         :param e: event identifier
+        :param s: current state identifier
         :return: float between 0 and 1
         """
         raise NotImplementedError
@@ -424,11 +371,11 @@ class Gsmp(GsmpWrapper, metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def f_0(self, e, s):
+    def f_0(self, s, e):
         """
         Returns the distribution function to set the clock of event e in initial state s
-        :param e: event identifier
         :param s: state identifier
+        :param e: event identifier
         :return: float
         """
         raise NotImplementedError
@@ -538,11 +485,13 @@ class Compose(SimulationObject):
         """
         return self._get_events(node.get_active_events() for node in self.nodes)
 
-    def get_old_events(self):
-        return self._get_events(node.get_old_events() for node in self.nodes)
+    def get_old_events(self, new_state, trigger_event, old_state):
+        return self._get_events(node.get_old_events(new_state[i], trigger_event, old_state[i])
+                                for i, node in enumerate(self.nodes))
 
-    def get_new_events(self):
-        return self._get_events(node.get_new_events() for node in self.nodes)
+    def get_new_events(self, new_state, trigger_event, old_state):
+        return self._get_events(node.get_new_events(new_state[i], trigger_event, old_state[i])
+                                for i, node in enumerate(self.nodes))
 
     @cache
     def get_adj_states(self, state):
@@ -558,10 +507,10 @@ class Compose(SimulationObject):
         if e.shared and self._p is not None:
             # get all possible adjacent vector states
             adj_states = self.get_adj_states(0)
-            return np.random.choice(
-                adj_states,
-                p=[self._p(_s, o, e) for _s in adj_states]
-            )
+            return adj_states[np.random.choice(
+                len(adj_states),
+                p=[self._p(_s, e, o) for _s in adj_states]
+            )]
 
         indices, events = zip(*self.find_gsmp[e])
 
@@ -592,51 +541,43 @@ class Compose(SimulationObject):
         winning_time = np.amin(time_deltas)  # take the minimum time
         winning_indexes = np.where(time_deltas == winning_time)[0]  # In case multiple events 'win'
         winning_events = [es[i] for i in winning_indexes]  # Randomly select one of those events
-        return np.random.choice(winning_events), winning_time  # Typically only one event wins.
+        return winning_events[np.random.choice(len(winning_events))], winning_time  # Typically only one event wins.
 
-    def set_current_state(self, s, e):
+    def set_current_state(self, s):
         """
         set current state to s, and update all event status trackers
         """
-        indices, events = zip(*self.find_gsmp[e])
-
         for i, node in enumerate(self.nodes):
-            if i in indices:
-                node.set_current_state(s[i], events[indices.index(i)])  # take the event which the node 'knows'
-            else:
-                # nodes unaffected by e need to update their event trackers to reflect the change
-                node.set_current_state(s[i], None)
-        del indices, events
+            node.set_current_state(s[i])
 
-    def set_old_clocks(self, s, t):
+    def set_old_clocks(self, time, new_state, trigger_event, old_state):
         """
         iterate over all the old events in each node, and update clocks
         """
-        for event in self.get_old_events():
+        for event in self.get_old_events(new_state, trigger_event, old_state):
             if event.shared and self._r is not None:
-                time_delta = t * self._r(s, event)
+                time_delta = time * self._r(old_state, event)
             else:
                 i, _event = self.find_gsmp[event][0]
-                time_delta = t * self.nodes[i]._r(s[i], _event)
+                time_delta = time * self.nodes[i]._r(old_state[i], _event)
             event.tick_down(time_delta)
 
-    def set_new_clocks(self, s, e):
+    def set_new_clocks(self, new_state, trigger_event, old_state):
         """
         iterate over all the new events in each node, and set new clocks
         """
-        new_state = self.get_current_state()
-        for i, _e in self.find_gsmp[e]:
+        for i, _e in self.find_gsmp[trigger_event]:
             node = self.nodes[i]
-            for new_event in node.get_new_events():
+            for new_event in node.get_new_events(new_state[i], trigger_event, old_state[i]):
                 if new_event.shared and self._f is not None:
                     new_event.set_clock(self._f(
                         new_state, new_event,
-                        s, e
+                        old_state, trigger_event
                     ))
                 else:
                     new_event.set_clock(node._f(
                         new_state[i], new_event,
-                        s[i], _e
+                        old_state[i], _e
                     ))
 
 
@@ -672,9 +613,9 @@ class Simulator:
 
             epochs -= 1
         return (
-            list(map(self.g.parse_state, state_holding_times)),     # observed states
-            list(state_holding_times.values()),                     # holding times
-            total_time                                              # total simulation time
+            list(state_holding_times.keys()),     # observed states
+            list(state_holding_times.values()),   # holding times
+            total_time                            # total simulation time
         )
 
     def _generate_path(self):
@@ -685,10 +626,10 @@ class Simulator:
         trigger_event, time_delta = self.g.choose_winning_event(old_state, active_events)
         # Select new state
         new_state = self.g.get_new_state(old_state, trigger_event)
-        # Update state trackers for next iteration
-        self.g.set_current_state(new_state, trigger_event)
         # Update clocks for next loop
-        self.g.set_old_clocks(old_state, time_delta)
-        self.g.set_new_clocks(old_state, trigger_event)
+        self.g.set_old_clocks(time_delta, new_state, trigger_event, old_state)
+        self.g.set_new_clocks(new_state, trigger_event, old_state)
+
+        self.g.set_current_state(new_state)
 
         return old_state, trigger_event, new_state, time_delta

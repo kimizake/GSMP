@@ -20,6 +20,7 @@ def mmc_p(p0, n, c, u):
 
 
 def get_state_probabilities(_states, _holding_times, _total_time):
+    # Map the holding times onto a plane
     grid = np.zeros(shape=(k + 1, k + 1))
     for _state, _holding_time in zip(_states, _holding_times):
         grid[_state] = _holding_time
@@ -60,7 +61,7 @@ if __name__ == "__main__":
     p0 = 1 / math.fsum(
         [rho ** i / math.factorial(i) for i in range(c)] + [rho ** c / math.factorial(c - 1) / (c - rho)])
     # This is just the mm1k formula
-    ps = [p0] + [mmc_p(p0, n, 1, rho) for n in range(1, k+1)]
+    ps = [p0] + [mmc_p(p0, n, c, rho) for n in range(1, k+1)]
 
     # Create the graphs
     def print_plots(y, title):
@@ -72,9 +73,9 @@ if __name__ == "__main__":
         ax.set_title(title)
         ax.legend()
 
+    # plot results
     print_plots(y1, 'Queue 1 composition')
     print_plots(y2, 'Queue 2 composition')
     print_plots(y3, 'Queue 1 normal')
     print_plots(y4, 'Queue 2 normal')
     plt.show()
-

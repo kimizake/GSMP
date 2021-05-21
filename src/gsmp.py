@@ -32,6 +32,9 @@ class Event:
         self._frozen = True
         self.clock = None
 
+    def is_frozen(self):
+        return self._frozen
+
     def tick_down(self, time):
         if self._frozen:
             return
@@ -463,8 +466,8 @@ class Compose(SimulationObject):
         for node in self.nodes:
             node.reset()
 
-        def get_event_from_tuple(name, node):
-            return {event.get_name(): event for event in node.get_events()}[name]
+        def get_event_from_tuple(_name, _node):
+            return {event.get_name(): event for event in _node.get_events()}[_name]
 
         # Configure the synchronised events to have hashing equality
         for synchro in self._synchros:
@@ -514,20 +517,20 @@ class Compose(SimulationObject):
         return tuple(n.get_current_state() for n in self.nodes)
 
     def _get_events(self, events):
-        from itertools import chain
-        total_events = list(chain.from_iterable(events))
+        from itertools import chain, filterfalse
+        events = list(chain.from_iterable(events))    # flatten the list
         from collections import Counter
-        event_counter = Counter(total_events)
+        event_counter = Counter(events)
 
-        def determine(e):
-            # if e.shared:
-            #     return len(self.shared_events[e]) == event_counter[e]
-            # return True
-            return not e.shared or len(self.shared_events[e]) == event_counter[e]
+        def is_illegal(e):
+            return e.shared and (
+                    # when the event has a different status across its nodes,
+                    len(self.shared_events[e]) != event_counter[e]
+                    # or it's been suspended and is therefore a duplicate
+                    or e.is_frozen()
+            )
 
-        total_events[:] = filter(determine, total_events)  # Filter out inactive shared events
-        del event_counter
-        return list(set(total_events))  # Remove duplicates
+        return list(filterfalse(is_illegal, events))    # filter out 'illegal' events
 
     def get_active_events(self):
         """
@@ -599,7 +602,7 @@ class Compose(SimulationObject):
 
         for i, node in enumerate(self.nodes):
             if i in indices:
-                node.set_current_state(s[i], events[indices.index(i)])
+                node.set_current_state(s[i], events[indices.index(i)])  # take the event which the node 'knows'
             else:
                 # nodes unaffected by e need to update their event trackers to reflect the change
                 node.set_current_state(s[i], None)

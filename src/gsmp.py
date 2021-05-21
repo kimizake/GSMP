@@ -30,6 +30,7 @@ class Event:
 
     def suspend_clock(self):
         self._frozen = True
+        self.clock = None
 
     def tick_down(self, time):
         if self._frozen:
@@ -44,7 +45,7 @@ class Event:
         return hash(self._equal_event) if self._equal_event else hash((self.name, self._node))
 
     def __repr__(self):
-        return str('event ' + self.name)
+        return str('event ' + self.name + ' at ' + str(self._node))
 
 
 class State:
@@ -278,9 +279,6 @@ class GsmpWrapper(SimulationObject):
         return self.current_state
 
     def get_active_events(self):
-        # return list(filter(
-        #     lambda event: not event.frozen, self.bitmap.get(self.active_events)
-        # ))
         return list(self.bitmap.get(self.active_events))
 
     def get_old_events(self):
@@ -442,6 +440,8 @@ class Compose(SimulationObject):
     _p = None
     _f = None
     _r = None
+    shared_events = None
+    find_gsmp = None
 
     def __init__(self, *args, synchros=None, p=None, f=None, r=None):
         self.nodes = args
@@ -456,11 +456,17 @@ class Compose(SimulationObject):
         if r:
             self._r = lambda s, e: r(func(s), e.get_name())
 
+        self._synchros = synchros
+
+    def reset(self):
+        for node in self.nodes:
+            node.reset()
+
         def get_event_from_tuple(name, node):
             return {event.get_name(): event for event in node.get_events()}[name]
 
         # Configure the synchronised events to have hashing equality
-        for synchro in synchros:
+        for synchro in self._synchros:
             name, node = synchro[0]
             e = get_event_from_tuple(name, node)
             e.shared = True
@@ -473,7 +479,7 @@ class Compose(SimulationObject):
                 _e.set_equal_event(e)
                 _node.bitmap.positions[_e] = v
 
-        self.shared_events = {get_event_from_tuple(*ss[0]): ss for ss in synchros}
+        self.shared_events = {get_event_from_tuple(*ss[0]): ss for ss in self._synchros}
 
         # TODO: check preconditions for composition
 
@@ -498,22 +504,19 @@ class Compose(SimulationObject):
 
     @staticmethod
     def parse_state(states):
-        return [state.get_name() for state in states]
+        return tuple(state.get_name() for state in states)
 
     def get_current_state(self):
         """
         Return current state vector
         """
-        return list(n.get_current_state() for n in self.nodes)
+        return tuple(n.get_current_state() for n in self.nodes)
 
-    def get_active_events(self):
-        """
-        Return some data structure with current event information
-        """
+    def _get_events(self, events):
         from itertools import chain
-        active_events = list(chain.from_iterable(node.get_active_events() for node in self.nodes))
+        total_events = list(chain.from_iterable(events))
         from collections import Counter
-        event_counter = Counter(active_events)
+        event_counter = Counter(total_events)
 
         def determine(e):
             # if e.shared:
@@ -521,9 +524,21 @@ class Compose(SimulationObject):
             # return True
             return not e.shared or len(self.shared_events[e]) == event_counter[e]
 
-        active_events[:] = filter(determine, active_events)  # Filter out inactive shared events
+        total_events[:] = filter(determine, total_events)  # Filter out inactive shared events
         del event_counter
-        return list(set(active_events))  # Remove duplicates
+        return list(set(total_events))  # Remove duplicates
+
+    def get_active_events(self):
+        """
+        :return: list of all active events
+        """
+        return self._get_events(node.get_active_events() for node in self.nodes)
+
+    def get_old_events(self):
+        return self._get_events(node.get_old_events() for node in self.nodes)
+
+    def get_new_events(self):
+        return self._get_events(node.get_new_events() for node in self.nodes)
 
     @cache
     def get_adj_states(self, state):
@@ -581,12 +596,13 @@ class Compose(SimulationObject):
         """
         iterate over all the old events in each node, and update clocks
         """
-        for i, node in enumerate(self.nodes):
-            for event in node.get_old_events():
-                if event.shared and self._r is not None:
-                    event.tick_down(t * self._r(s, event))
-                else:
-                    event.tick_down(t * node._r(s[i], event))
+        for event in self.get_old_events():
+            if event.shared and self._r is not None:
+                time_delta = t * self._r(s, event)
+            else:
+                i, _event = self.find_gsmp[event][0]
+                time_delta = t * self.nodes[i]._r(s[i], _event)
+            event.tick_down(time_delta)
 
     def set_new_clocks(self, s, e):
         """

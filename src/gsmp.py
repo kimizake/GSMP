@@ -310,8 +310,9 @@ class GsmpWrapper(SimulationObject):
         return np.random.choice(winning_events), t
 
     def set_current_state(self, new_state, winning_event):
-        e = self.current_state.events - self.bitmap.positions[winning_event]
-        e_prime = new_state.events  # e_prime = self._e(new_state)
+        e = self.current_state.events
+        e -= self.bitmap.positions[winning_event] if winning_event is not None else 0
+        e_prime = new_state.events
         old_events = e & e_prime
         new_events = e_prime - old_events
         self.old_events = old_events
@@ -549,22 +550,27 @@ class Compose(SimulationObject):
 
     def get_new_state(self, o, e):
         """
-        Given a list of old states and a singular event,
-        go to the active nodes and call new state
-        Return a list of just the updated states
+        return list of new states
         """
-        def compose_new_state_vector(arg):
-            index, event = arg
-            if e.shared and self._p is not None:
-                # compute all possible adjacent vector states
-                adj_states = self.get_adj_states(o)
-                return np.random.choice(
-                    adj_states,
-                    p=[self._p(_s, o, e) for _s in adj_states]
-                )
-            return self.nodes[index].get_new_state(o[index], event)
+        if e.shared and self._p is not None:
+            # get all possible adjacent vector states
+            adj_states = self.get_adj_states(0)
+            return np.random.choice(
+                adj_states,
+                p=[self._p(_s, o, e) for _s in adj_states]
+            )
 
-        return list(map(compose_new_state_vector, self.find_gsmp[e]))
+        indices, events = zip(*self.find_gsmp[e])
+
+        def get_new_node_state(i, node):
+            if i in indices:        # when event 'e' is in gsmp 'node'
+                event = events[indices.index(i)]
+                return node.get_new_state(o[i], event)  # that 'node' will enter a new state
+            return node.get_current_state()             # otherwise its state doesn't change
+        from itertools import starmap
+        new_states = tuple(starmap(get_new_node_state, enumerate(self.nodes)))
+        del indices, events
+        return new_states
 
     def choose_winning_event(self, o, es):
         """
@@ -587,10 +593,17 @@ class Compose(SimulationObject):
 
     def set_current_state(self, s, e):
         """
-            Given a list of updated states, we now need to enumerate to update nodes.
+        set current state to s, and update all event status trackers
         """
-        for i, (index, event) in enumerate(self.find_gsmp[e]):
-            self.nodes[index].set_current_state(s[i], event)
+        indices, events = zip(*self.find_gsmp[e])
+
+        for i, node in enumerate(self.nodes):
+            if i in indices:
+                node.set_current_state(s[i], events[indices.index(i)])
+            else:
+                # nodes unaffected by e need to update their event trackers to reflect the change
+                node.set_current_state(s[i], None)
+        del indices, events
 
     def set_old_clocks(self, s, t):
         """

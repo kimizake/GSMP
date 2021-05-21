@@ -398,14 +398,12 @@ class Compose(SimulationObject):
         self.nodes = args
 
         # Wrap the stochastic functions.
-        def func(state_vector):
-            return [state.get_name() for state in state_vector]
         if p:
-            self._p = lambda _s, e, s: p(func(_s), e.get_name(), func(s))
+            self._p = lambda _s, e, s: p(_s, e.get_name(), s)
         if f:
-            self._f = lambda _s, _e, s, e: f(func(_s), _e.get_name(), func(s), e.get_name())
+            self._f = lambda _s, _e, s, e: f(_s, _e.get_name(), s, e.get_name())
         if r:
-            self._r = lambda s, e: r(func(s), e.get_name())
+            self._r = lambda s, e: r(s, e.get_name())
 
         self._synchros = synchros
 

@@ -42,7 +42,9 @@ class Event:
         self.clock -= time
 
     def __eq__(self, other):
-        return isinstance(other, Event) and hash(self) == hash(other)
+        return isinstance(other, Event) and (
+            (self.name == other.name and self._node == other._node) or (hash(self) == hash(other))
+        )
 
     def __hash__(self):
         return hash(self._equal_event) if self._equal_event else hash((self.name, self._node))
@@ -111,21 +113,18 @@ class GsmpWrapper(SimulationObject):
     Proxy class to add simulation function to user defined GSMP
     """
     __gsmp__ = None
-    _states = None
     _events = None
     current_state = None
     old_events = None
     new_events = None
     active_events = None
 
-    def __init__(self, obj, infinite=False, adjacent_states=None):
+    def __init__(self, obj, adjacent_states=None):
         # TODO: add a save feature after pre-processing
 
         if not isinstance(obj, Gsmp):
             raise TypeError('wrapped object must be of type %s' % Gsmp)
         self.__gsmp__ = obj
-
-        self._infinite = infinite
 
         # Construct state and event objects
         self._events = [Event(self, name) for name in self.__gsmp__.events()]
@@ -161,33 +160,6 @@ class GsmpWrapper(SimulationObject):
         )]
         del states, probabilities
 
-        if self._infinite:
-            self._states = [initial_state]
-        else:
-            # Define states
-            self._states = list(self.__gsmp__.get_states())
-
-            # Replace initial state with the original instance
-            i = self._states.index(initial_state)
-            self._states.pop(i)
-            self._states.insert(i, initial_state)
-
-            # dfs prune states
-            visited = {s: False for s in self._states}
-
-            def visit(s):
-                if not visited[s]:
-                    visited[s] = True
-                    for _s in self.get_adj_states(s):
-                        visit(_s)
-
-            visit(initial_state)
-            for state in self._states:
-                if not visited[state]:
-                    self._states.remove(state)
-                    del state
-            del visited
-
         # set trackers
         self.current_state = initial_state
         # set initial clocks
@@ -214,18 +186,11 @@ class GsmpWrapper(SimulationObject):
         return self.__gsmp__.f_0(state, event.get_name())
 
     def get_states(self):
-        return self._states if self._states else (self.__gsmp__.states())
+        return self.__gsmp__.states()
 
     @cache
     def get_adj_states(self, state):
-        def clean(s):
-            try:
-                return self._states[self._states.index(s)]  # Get the original pointer to the state object
-            except ValueError:  # State hasn't been created yet
-                self._states.append(s)
-                return s
-        # Want to 'clean' the output from the internal _get_adj_states function
-        return list(map(clean, self._get_adj_states(state)))
+        return list(self._get_adj_states(state))
 
     def get_events(self):
         return self._events
@@ -255,7 +220,7 @@ class GsmpWrapper(SimulationObject):
         return self.bitmap.get(e2 - (e1 & e2))
 
     def get_new_state(self, o, e):
-        adj_states = self.get_adj_states(self.get_current_state())
+        adj_states = self.get_adj_states(o)
         return adj_states[np.random.choice(
             len(adj_states),
             p=[self._p(_s, e, o) for _s in adj_states]
@@ -283,11 +248,8 @@ class GsmpWrapper(SimulationObject):
 
 class Gsmp(GsmpWrapper, metaclass=ABCMeta):
 
-    def __init__(self, infinite=False, adjacent_states=None):
-        # Infinite state spaces must be specified
-        if infinite and not adjacent_states:
-            raise NotImplementedError('Need to define adjacent states function')
-        super().__init__(self, infinite=infinite, adjacent_states=adjacent_states)
+    def __init__(self, adjacent_states=None):
+        super().__init__(self, adjacent_states=adjacent_states)
 
     # Define interface through abstract methods
     @classmethod
@@ -423,10 +385,7 @@ class Compose(SimulationObject):
                 _e = get_event_from_tuple(_name, _node)
                 _e.shared = True
                 _e.suspend_clock()
-                # The bitmap info needs to be updated because the hash of _e has changed
-                v = _node.bitmap.positions.pop(_e)
                 _e.set_equal_event(e)
-                _node.bitmap.positions[_e] = v
 
         self.shared_events = {get_event_from_tuple(*ss[0]): ss for ss in self._synchros}
 
@@ -449,7 +408,6 @@ class Compose(SimulationObject):
         from itertools import product
         # This takes the cartesian product of the states, therefore it is really slow
         return product(*(node.get_states() for node in self.nodes))
-        # return list(chain.from_iterable(node.get_states() for node in self.nodes))
 
     @staticmethod
     def parse_state(states):
@@ -598,7 +556,7 @@ class Simulator:
         state_holding_times = {}
         total_time = 0
         while epochs > 0:
-            old_state, new_state, trigger_event, time_delta = self._generate_path()
+            old_state, trigger_event, new_state, time_delta = self._generate_path()
 
             # Increment timing metrics
             if old_state not in state_holding_times:

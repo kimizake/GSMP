@@ -350,18 +350,15 @@ class Compose(SimulationObject):
     therefore the user has the choice of yielding setter functions for probability, clock distributions and rates.
     """
 
-    _p = None
     _f = None
     _r = None
     shared_events = None
     find_gsmp = None
 
-    def __init__(self, *args, synchros=None, p=None, f=None, r=None):
+    def __init__(self, *args, synchros=None, f=None, r=None):
         self.nodes = args
 
         # Wrap the stochastic functions.
-        if p:
-            self._p = lambda _s, e, s: p(_s, e.get_name(), s)
         if f:
             self._f = lambda _s, _e, s, e: f(_s, _e.get_name(), s, e.get_name())
         if r:
@@ -449,29 +446,15 @@ class Compose(SimulationObject):
         return self._get_events(node.get_new_events(new_state[i], trigger_event, old_state[i])
                                 for i, node in enumerate(self.nodes))
 
-    @cache
-    def get_adj_states(self, state):
-        from itertools import product
-        return list(product(*(
-            self.nodes[i].get_adj_states(s_i) for i, s_i in enumerate(state)
-        )))
-
     def get_new_state(self, o, e):
         """
         return list of new states
         """
-        if e.shared and self._p is not None:
-            # get all possible adjacent vector states
-            adj_states = self.get_adj_states(0)
-            return adj_states[np.random.choice(
-                len(adj_states),
-                p=[self._p(_s, e, o) for _s in adj_states]
-            )]
-
+        # for event e, find the index which process nodes it belongs to, and its alias within that node
         indices, events = zip(*self.find_gsmp[e])
 
         def get_new_node_state(i, node):
-            if i in indices:        # when event 'e' is in gsmp 'node'
+            if i in indices:                            # when event 'e' is in gsmp 'node'
                 event = events[indices.index(i)]
                 return node.get_new_state(o[i], event)  # that 'node' will enter a new state
             return node.get_current_state()             # otherwise its state doesn't change

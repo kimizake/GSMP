@@ -1,3 +1,6 @@
+from functools import cache
+
+
 class BitMap:
     def __init__(self, objects):
         self.size = len(objects)
@@ -6,6 +9,7 @@ class BitMap:
         for item in objects:
             self.positions[item] = 1 << (self.size - objects.index(item) - 1)
 
+    @cache
     def get(self, num):
         string = bin(num)[2:].zfill(self.size)
         assert len(string) == self.size

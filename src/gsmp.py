@@ -84,7 +84,7 @@ class SimulationObject(metaclass=ABCMeta):
         raise NotImplementedError
 
     @abstractmethod
-    def get_active_events(self):
+    def get_active_events(self, s):
         raise NotImplementedError
 
     @abstractmethod
@@ -163,7 +163,7 @@ class GsmpWrapper(SimulationObject):
         # set trackers
         self.current_state = initial_state
         # set initial clocks
-        for event in self.get_active_events():
+        for event in self.get_active_events(initial_state):
             event.set_clock(self._f_0(initial_state, event))
 
     @cache
@@ -198,8 +198,8 @@ class GsmpWrapper(SimulationObject):
     def get_current_state(self):
         return self.current_state
 
-    def get_active_events(self):
-        return list(self.bitmap.get(self._e(self.current_state)))
+    def get_active_events(self, state):
+        return list(self.bitmap.get(self._e(state)))
 
     def get_old_events(self, new_state, trigger_event, old_state):
         e1 = self._e(old_state)
@@ -406,10 +406,6 @@ class Compose(SimulationObject):
         # This takes the cartesian product of the states, therefore it is really slow
         return product(*(node.get_states() for node in self.nodes))
 
-    @staticmethod
-    def parse_state(states):
-        return tuple(state.get_name() for state in states)
-
     def get_current_state(self):
         """
         Return current state vector
@@ -432,19 +428,46 @@ class Compose(SimulationObject):
 
         return list(filterfalse(is_illegal, events))    # filter out 'illegal' events
 
-    def get_active_events(self):
+    def get_active_events(self, state):
         """
         :return: list of all active events
         """
-        return self._get_events(node.get_active_events() for node in self.nodes)
+        return self._get_events(node.get_active_events(state[i]) for i, node in enumerate(self.nodes))
 
     def get_old_events(self, new_state, trigger_event, old_state):
         return self._get_events(node.get_old_events(new_state[i], trigger_event, old_state[i])
                                 for i, node in enumerate(self.nodes))
 
     def get_new_events(self, new_state, trigger_event, old_state):
-        return self._get_events(node.get_new_events(new_state[i], trigger_event, old_state[i])
-                                for i, node in enumerate(self.nodes))
+        # Whereas old and active events must have that status in all nodes,
+        # New events must be new only in the 'active' processes
+        # from itertools import chain, filterfalse
+        #
+        # indices, events = zip(*self.find_gsmp[trigger_event])
+        # new_events = list(chain.from_iterable(
+        #     node.get_new_events(new_state[i], trigger_event, old_state[i]) for i, node in enumerate(self.nodes)))
+        # from collections import Counter
+        # event_counter = Counter(new_events)
+        #
+        # def is_illegal(event):
+        #     if event.shared:
+        #         _indices, _events = zip(*self.find_gsmp[event])
+        #         expected_count = len(set(indices) & set(_indices))
+        #         return event_counter[event] != expected_count
+        #     return False
+        #
+        # def get_default(event):
+        #     if event.shared:
+        #         return self.find_gsmp[event][0][1]
+        #     return event
+        #
+        # return map(get_default, filterfalse(is_illegal, new_events))
+
+        # TODO look for a smarter way
+
+        new_active_events = set(self.get_active_events(new_state))
+        old_events = set(self.get_old_events(new_state, trigger_event, old_state))
+        return new_active_events - old_events
 
     def get_new_state(self, o, e):
         """
@@ -491,33 +514,31 @@ class Compose(SimulationObject):
 
     def set_old_clocks(self, time, new_state, trigger_event, old_state):
         """
-        iterate over all the old events in each node, and update clocks
+        Decrement all old clocks
         """
         for event in self.get_old_events(new_state, trigger_event, old_state):
             if event.shared and self._r is not None:
-                time_delta = time * self._r(old_state, event)
+                event.tick_down(time * self._r(old_state, event))
             else:
-                i, _event = self.find_gsmp[event][0]
-                time_delta = time * self.nodes[i]._r(old_state[i], _event)
-            event.tick_down(time_delta)
+                i, _event = self.find_gsmp[event][0]    # Go to default process
+                event.tick_down(time * self.nodes[i]._r(old_state[i], _event))
 
     def set_new_clocks(self, new_state, trigger_event, old_state):
         """
-        iterate over all the new events in each node, and set new clocks
+        Set all new clocks
         """
-        for i, _e in self.find_gsmp[trigger_event]:
-            node = self.nodes[i]
-            for new_event in node.get_new_events(new_state[i], trigger_event, old_state[i]):
-                if new_event.shared and self._f is not None:
-                    new_event.set_clock(self._f(
-                        new_state, new_event,
-                        old_state, trigger_event
-                    ))
-                else:
-                    new_event.set_clock(node._f(
-                        new_state[i], new_event,
-                        old_state[i], _e
-                    ))
+        for new_event in self.get_new_events(new_state, trigger_event, old_state):
+            if new_event.shared and self._f is not None:
+                new_event.set_clock(self._f(
+                    new_state, new_event,
+                    old_state, trigger_event
+                ))
+            else:
+                i, _event = self.find_gsmp[new_event][0]    # Go to default process
+                new_event.set_clock(self.nodes[i]._f(
+                    new_state[i], new_event,
+                    old_state[i], _event
+                ))
 
 
 class Simulator:
@@ -560,7 +581,7 @@ class Simulator:
     def _generate_path(self):
         # Get old state and active events
         old_state = self.g.get_current_state()
-        active_events = self.g.get_active_events()
+        active_events = self.g.get_active_events(old_state)
         # Select trigger event and find time from last event
         trigger_event, time_delta = self.g.choose_winning_event(old_state, active_events)
         # Select new state

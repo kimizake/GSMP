@@ -417,14 +417,17 @@ class Compose(SimulationObject):
             self._r = lambda s, e: r(s, e.get_name())
 
     def reset(self):
-        total_events = list(chain.from_iterable(node.get_events() for node in self.nodes))
+        total_events = {
+            (e.get_name(), e.get_default_process()): e
+            for e in chain.from_iterable(node.get_events() for node in self.nodes)
+        }
 
         # Configure the synchronised events to have hashing equality
         for event_mapping in self.shared_events:
             name, node = event_mapping[0]   # Take default as first one
-            e = total_events[total_events.index(Event(node, name))]
+            e = total_events[(name, node)]
             for _name, _node in event_mapping[1:]:
-                _e = total_events[total_events.index(Event(_node, _name))]
+                _e = total_events[(_name, _node)]
                 e.add_shared_event(_node, _name)
                 _node.swap_event(_e, e)
             e.shared = True  # take e as the default for this synchronisation

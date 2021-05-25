@@ -47,7 +47,6 @@ class MM1(Gsmp):
 rho = arrival / service
 
 queue = MM1(
-    infinite=True,
     adjacent_states=lambda state: [1] if state == 0 else [state - 1, state + 1]
 )
 

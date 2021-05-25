@@ -1,4 +1,4 @@
-from gsmp import Compose, Simulator
+from gsmp import Simulator
 import matplotlib.pyplot as plt
 import numpy as np
 
@@ -37,10 +37,11 @@ if __name__ == "__main__":
     from mm1k import MM1k
     # Define 2 mm1k queues
     q1, q2 = MM1k('Queue 1'), MM1k('Queue 2')
-    # Define tandem queue as composition
-    tq1 = Compose(q1, q2, synchros=[
-        [('com', q1), ('arr', q2)],
-    ])
+    # Compose tandem queue
+    tq1 = q1 + q2
+    tq1.shared_events = [
+        [('com', q1), ('arr', q2)]
+    ]
 
     # Define tandem queue as normal gsmp
     from tandem_queue import Tandem_queue
@@ -70,7 +71,7 @@ if __name__ == "__main__":
         ax.plot(range(k + 1), ps, label='expected')
         ax.set_xlabel('Number of jobs in system')
         ax.set_ylabel('Probability')
-        ax.set_title(title)
+        ax.set_title(title + ' with traversals = {}'.format(epochs))
         ax.legend()
 
     # plot results

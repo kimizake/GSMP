@@ -1,56 +1,57 @@
 from abc import ABCMeta, abstractmethod
 import numpy as np
 from bitmap import BitMap
+from itertools import chain, filterfalse, product
+import operator
 from functools import cache
 
 
 class Event:
     def __init__(self, node, name):
-        self.name = name
-        self.clock = None
-        self._frozen = False
-        self.shared = False
-        self._equal_event = None
+        self._name = name
         self._node = node
+        self._shared = False
+        self._shared_events = {node: name}
+        self._total_shared_events = 1
 
-    def get_name(self):
-        return self.name
+    def get_name(self, process=None):
+        if process is None and not self._shared:
+            return self._name
+        return self._shared_events[process]
 
-    def set_clock(self, clock):
-        if self._frozen:
-            return
-        self.clock = clock
+    def get_default_process(self):
+        return self._node
 
-    def get_clock(self):
-        return self.clock if not self._frozen else None
+    @property
+    def shared(self):
+        return self._shared
 
-    def set_equal_event(self, obj):
-        assert isinstance(obj, Event)
-        self._equal_event = obj
+    @shared.setter
+    def shared(self, val):
+        self._shared = val
 
-    def suspend_clock(self):
-        self._frozen = True
-        self.clock = None
+    def add_shared_event(self, node, name):
+        self._shared_events[node] = name
+        self._total_shared_events += 1
 
-    def is_frozen(self):
-        return self._frozen
+    def get_shared_events(self):
+        return self._shared_events
 
-    def tick_down(self, time):
-        if self._frozen:
-            return
-        assert self.clock >= time
-        self.clock -= time
+    def total_shared_events(self):
+        return self._total_shared_events
 
     def __eq__(self, other):
         return isinstance(other, Event) and (
-            (self.name == other.name and self._node == other._node) or (hash(self) == hash(other))
+            (self._name == other._name and self._node == other._node) or
+            (self._shared and self._shared_events[other._node] == other._name) or
+            (other._shared and other._shared_events[self._node] == self._name)
         )
 
     def __hash__(self):
-        return hash(self._equal_event) if self._equal_event else hash((self.name, self._node))
+        return hash((self._name, self._node))
 
     def __repr__(self):
-        return str('event ' + self.name + ' at ' + str(self._node))
+        return str(self._name + '@' + str(self._node))
 
 
 class SimulationObject(metaclass=ABCMeta):
@@ -66,8 +67,7 @@ class SimulationObject(metaclass=ABCMeta):
                 hasattr(subclass, 'get_new_state') and callable(subclass.get_new_state) and
                 hasattr(subclass, 'set_current_state') and callable(subclass.set_current_state) and
                 hasattr(subclass, 'set_old_clocks') and callable(subclass.set_old_clocks) and
-                hasattr(subclass, 'set_new_clocks') and callable(subclass.set_new_clocks) and
-                hasattr(subclass, 'parse_state') and callable(subclass.parse_state) or
+                hasattr(subclass, 'set_new_clocks') and callable(subclass.set_new_clocks) or
                 NotImplementedError
         )
 
@@ -114,10 +114,7 @@ class GsmpWrapper(SimulationObject):
     """
     __gsmp__ = None
     _events = None
-    current_state = None
-    old_events = None
-    new_events = None
-    active_events = None
+    _current_state = None
 
     def __init__(self, obj, adjacent_states=None):
         # TODO: add a save feature after pre-processing
@@ -129,15 +126,15 @@ class GsmpWrapper(SimulationObject):
         # Construct state and event objects
         self._events = [Event(self, name) for name in self.__gsmp__.events()]
 
-        # Create event bitmap - the precondition here is that the event set is finite and < bit count
-        self.bitmap = BitMap(self._events)
+        self._clock = None
+        self._bitmap = None
 
         if adjacent_states is not None:
             self._get_adj_states = adjacent_states
         else:
             # The default get_adjacent_state function has to iterate over the entire state space and event set
             self._get_adj_states = lambda s: {
-                _s for _s in self.get_states() for e in self.bitmap.get(self._e(s)) if self._p(_s, e, s) != 0
+                _s for _s in self.get_states() for e in self._bitmap.get(self._e(s)) if self._p(_s, e, s) != 0
             }
 
     def reset(self):
@@ -160,30 +157,59 @@ class GsmpWrapper(SimulationObject):
         )]
         del states, probabilities
 
+        if self._clock:
+            del self._clock
+        if self._bitmap:
+            del self._bitmap
+        self._clock = {}
+        self._bitmap = BitMap(self._events)
         # set trackers
-        self.current_state = initial_state
+        self._current_state = initial_state
         # set initial clocks
         for event in self.get_active_events(initial_state):
-            event.set_clock(self._f_0(initial_state, event))
+            self.set_clock(initial_state, event, None, None, f=self._f_0(initial_state, event))
+
+    def set_clock(self, next_state, new_event, old_state, trigger_event, f=None):
+        if f is None:
+            f = self._f(next_state, new_event, old_state, trigger_event)
+        self._clock[new_event] = f
+
+    def reduce_clock(self, state, event, time=0, r=None):
+        if r is None:
+            r = self._r(state, event)
+        self._clock[event] -= time * r
+
+    def time_delta(self, state, event, r=None):
+        if r is None:
+            r = self._r(state, event)
+        return self._clock[event] / r
+
+    def swap_event(self, original, new):
+        # replace original in event list
+        i = self._events.index(original)
+        self._events[i] = new
+        # clear memory
+        del original
 
     @cache
     def _e(self, state):
-        return self.bitmap.format([Event(self, name) for name in self.__gsmp__.e(state)])
+        return self._bitmap.format([Event(self, name) for name in self.__gsmp__.e(state)])
 
     def _p(self, next_state, event, old_state):
-        return self.__gsmp__.p(next_state, event.get_name(), old_state)
+        return self.__gsmp__.p(next_state, event.get_name(process=self), old_state)
 
     def _f(self, next_state, new_event, old_state, trigger_event):
-        return self.__gsmp__.f(next_state, new_event.get_name(), old_state, trigger_event.get_name())
+        return self.__gsmp__.f(next_state, new_event.get_name(process=self),
+                               old_state, trigger_event.get_name(process=self))
 
     def _r(self, state, event):
-        return self.__gsmp__.r(state, event.get_name())
+        return self.__gsmp__.r(state, event.get_name(process=self))
 
     def _s_0(self, state):
         return self.__gsmp__.s_0(state)
 
     def _f_0(self, state, event):
-        return self.__gsmp__.f_0(state, event.get_name())
+        return self.__gsmp__.f_0(state, event.get_name(process=self))
 
     def get_states(self):
         return self.__gsmp__.states()
@@ -196,28 +222,28 @@ class GsmpWrapper(SimulationObject):
         return self._events
 
     def get_current_state(self):
-        return self.current_state
+        return self._current_state
 
     def get_active_events(self, state):
-        return list(self.bitmap.get(self._e(state)))
+        return self._bitmap.get(self._e(state))
 
     def get_old_events(self, new_state, trigger_event, old_state):
         e1 = self._e(old_state)
         try:
-            e1 -= self.bitmap.positions[trigger_event]
+            e1 -= self._bitmap.positions[trigger_event]
         except KeyError:
             pass
         e2 = self._e(new_state)
-        return self.bitmap.get(e1 & e2)
+        return self._bitmap.get(e1 & e2)
 
     def get_new_events(self, new_state, trigger_event, old_state):
         e1 = self._e(old_state)
         try:
-            e1 -= self.bitmap.positions[trigger_event]
+            e1 -= self._bitmap.positions[trigger_event]
         except KeyError:
             pass
         e2 = self._e(new_state)
-        return self.bitmap.get(e2 - (e1 & e2))
+        return self._bitmap.get(e2 - (e1 & e2))
 
     def get_new_state(self, o, e):
         adj_states = self.get_adj_states(o)
@@ -227,23 +253,22 @@ class GsmpWrapper(SimulationObject):
         )]
 
     def choose_winning_event(self, o, es):
-        tmp = list(map(lambda e: e.get_clock() / self._r(o, e), es))
-        t = np.amin(tmp)
-        event_index = np.where(tmp == t)[0]
-        # Usually there is only 1 winning event, but in the case of a tie, randomly select a winner
-        winning_events = [es[i] for i in event_index]
-        return winning_events[np.random.choice(len(winning_events))], t
+        tmp = list(map(lambda e: (e, self.time_delta(o, e)), es))
+        return min(tmp, key=operator.itemgetter(1))
 
     def set_current_state(self, new_state):
-        self.current_state = new_state
+        self._current_state = new_state
 
     def set_old_clocks(self, time, new_state, trigger_event, old_state):
         for old_event in self.get_old_events(new_state, trigger_event, old_state):
-            old_event.tick_down(time * self._r(old_state, old_event))
+            self.reduce_clock(old_state, old_event, time=time)
 
-    def set_new_clocks(self, new_state, trigger_event, old_state):
-        for new_event in self.get_new_events(new_state, trigger_event, old_state):
-            new_event.set_clock(self._f(new_state, new_event, old_state, trigger_event))
+    def set_new_clocks(self, next_state, trigger_event, old_state):
+        for new_event in self.get_new_events(next_state, trigger_event, old_state):
+            self.set_clock(next_state, new_event, old_state, trigger_event)
+
+    def __add__(self, other):
+        return Compose(self, other)
 
 
 class Gsmp(GsmpWrapper, metaclass=ABCMeta):
@@ -352,57 +377,49 @@ class Compose(SimulationObject):
 
     _f = None
     _r = None
-    shared_events = None
+    _shared_events = None
     find_gsmp = None
 
-    def __init__(self, *args, synchros=None, f=None, r=None):
-        self.nodes = args
+    def __init__(self, *args, shared_events=None, f=None, r=None):
+        # Nodes data-structure tracks sub-processes and their 'position' in the state vector
+        self.nodes = {arg: i for i, arg in enumerate(args)}
+        self.shared_events = shared_events
+        self.override_clocks(f=f, r=r)
 
-        # Wrap the stochastic functions.
+    @property
+    def shared_events(self):
+        return self._shared_events
+
+    @shared_events.setter
+    def shared_events(self, val):
+        self._shared_events = val
+
+    def override_clocks(self, f=None, r=None):
+        # Override clock functions.
         if f:
             self._f = lambda _s, _e, s, e: f(_s, _e.get_name(), s, e.get_name())
         if r:
             self._r = lambda s, e: r(s, e.get_name())
 
-        self._synchros = synchros
-
     def reset(self):
+        total_events = list(chain.from_iterable(node.get_events() for node in self.nodes))
+
+        # Configure the synchronised events to have hashing equality
+        for event_mapping in self.shared_events:
+            name, node = event_mapping[0]   # Take default as first one
+            e = total_events[total_events.index(Event(node, name))]
+            for _name, _node in event_mapping[1:]:
+                _e = total_events[total_events.index(Event(_node, _name))]
+                e.add_shared_event(_node, _name)
+                _node.swap_event(_e, e)
+            e.shared = True  # take e as the default for this synchronisation
+
+        del total_events
+
         for node in self.nodes:
             node.reset()
 
-        def get_event_from_tuple(_name, _node):
-            return {event.get_name(): event for event in _node.get_events()}[_name]
-
-        # Configure the synchronised events to have hashing equality
-        for synchro in self._synchros:
-            name, node = synchro[0]
-            e = get_event_from_tuple(name, node)
-            e.shared = True
-            for _name, _node in synchro[1:]:
-                _e = get_event_from_tuple(_name, _node)
-                _e.shared = True
-                _e.suspend_clock()
-                _e.set_equal_event(e)
-
-        self.shared_events = {get_event_from_tuple(*ss[0]): ss for ss in self._synchros}
-
-        # TODO: check preconditions for composition
-
-        # Create hash from event to node indexes
-        find_gsmp = {}
-        for i, n in enumerate(self.nodes):
-            es = n.get_events()
-            for e in es:
-                if e in find_gsmp:
-                    find_gsmp[e].append((i, e))
-                else:
-                    find_gsmp[e] = [(i, e)]
-        # This field holds information about the way events match up to nodes
-        # By storing the index instead of a pointer to the node, it makes it easy to work with state vectors.
-        self.find_gsmp = find_gsmp
-
     def get_states(self):
-        from itertools import product
         # This takes the cartesian product of the states, therefore it is really slow
         return product(*(node.get_states() for node in self.nodes))
 
@@ -412,8 +429,8 @@ class Compose(SimulationObject):
         """
         return tuple(n.get_current_state() for n in self.nodes)
 
-    def _get_events(self, events):
-        from itertools import chain, filterfalse
+    @staticmethod
+    def _get_events(events):
         events = list(chain.from_iterable(events))    # flatten the list
         from collections import Counter
         event_counter = Counter(events)
@@ -421,70 +438,40 @@ class Compose(SimulationObject):
         def is_illegal(e):
             return e.shared and (
                     # when the event has a different status across its nodes,
-                    len(self.shared_events[e]) != event_counter[e]
-                    # or it's been suspended and is therefore a duplicate
-                    or e.is_frozen()
+                    e.total_shared_events() != event_counter[e]
             )
 
-        return list(filterfalse(is_illegal, events))    # filter out 'illegal' events
+        return set(filterfalse(is_illegal, events))    # filter out 'illegal' events
 
     def get_active_events(self, state):
         """
         :return: list of all active events
         """
-        return self._get_events(node.get_active_events(state[i]) for i, node in enumerate(self.nodes))
+        return Compose._get_events(node.get_active_events(state[i]) for node, i in self.nodes.items())
 
     def get_old_events(self, new_state, trigger_event, old_state):
-        return self._get_events(node.get_old_events(new_state[i], trigger_event, old_state[i])
-                                for i, node in enumerate(self.nodes))
+        return Compose._get_events(node.get_old_events(new_state[i], trigger_event, old_state[i])
+                                   for node, i in self.nodes.items())
 
     def get_new_events(self, new_state, trigger_event, old_state):
-        # Whereas old and active events must have that status in all nodes,
-        # New events must be new only in the 'active' processes
-        # from itertools import chain, filterfalse
-        #
-        # indices, events = zip(*self.find_gsmp[trigger_event])
-        # new_events = list(chain.from_iterable(
-        #     node.get_new_events(new_state[i], trigger_event, old_state[i]) for i, node in enumerate(self.nodes)))
-        # from collections import Counter
-        # event_counter = Counter(new_events)
-        #
-        # def is_illegal(event):
-        #     if event.shared:
-        #         _indices, _events = zip(*self.find_gsmp[event])
-        #         expected_count = len(set(indices) & set(_indices))
-        #         return event_counter[event] != expected_count
-        #     return False
-        #
-        # def get_default(event):
-        #     if event.shared:
-        #         return self.find_gsmp[event][0][1]
-        #     return event
-        #
-        # return map(get_default, filterfalse(is_illegal, new_events))
-
         # TODO look for a smarter way
 
-        new_active_events = set(self.get_active_events(new_state))
-        old_events = set(self.get_old_events(new_state, trigger_event, old_state))
+        new_active_events = self.get_active_events(new_state)
+        old_events = self.get_old_events(new_state, trigger_event, old_state)
         return new_active_events - old_events
 
     def get_new_state(self, o, e):
         """
         return list of new states
         """
-        # for event e, find the index which process nodes it belongs to, and its alias within that node
-        indices, events = zip(*self.find_gsmp[e])
+        # Get e's parent subprocesses
+        nodes = e.get_shared_events()
 
-        def get_new_node_state(i, node):
-            if i in indices:                            # when event 'e' is in gsmp 'node'
-                event = events[indices.index(i)]
-                return node.get_new_state(o[i], event)  # that 'node' will enter a new state
-            return node.get_current_state()             # otherwise its state doesn't change
-        from itertools import starmap
-        new_states = tuple(starmap(get_new_node_state, enumerate(self.nodes)))
-        del indices, events
-        return new_states
+        def get_new_node_state(node):
+            if node in nodes:                                       # when event 'e' is in gsmp 'node'
+                return node.get_new_state(o[self.nodes[node]], e)   # that 'node' will enter a new state
+            return node.get_current_state()                         # otherwise its state doesn't change
+        return tuple(map(get_new_node_state, self.nodes))
 
     def choose_winning_event(self, o, es):
         """
@@ -494,22 +481,19 @@ class Compose(SimulationObject):
         :return: winning, time passed
         """
         def get_time_deltas(event):
+            parent = event.get_default_process()
             if event.shared and self._r is not None:
-                return event.get_clock() / self._r(o, event)
-            i, _event = self.find_gsmp[event][0]  # default behavior is to go to the first gsmp node
-            return event.get_clock() / self.nodes[i]._r(o[i], _event)
+                return event, parent.get_clock(event) / self._r(o, event)
+            return event, parent.time_delta(o[self.nodes[parent]], event)
 
         time_deltas = list(map(get_time_deltas, es))  # calculate how long each active event spends in current state
-        winning_time = np.amin(time_deltas)  # take the minimum time
-        winning_indexes = np.where(time_deltas == winning_time)[0]  # In case multiple events 'win'
-        winning_events = [es[i] for i in winning_indexes]  # Randomly select one of those events
-        return winning_events[np.random.choice(len(winning_events))], winning_time  # Typically only one event wins.
+        return min(time_deltas, key=operator.itemgetter(1))     # Return event with smallest time_delta
 
     def set_current_state(self, s):
         """
         set current state to s, and update all event status trackers
         """
-        for i, node in enumerate(self.nodes):
+        for node, i in self.nodes.items():
             node.set_current_state(s[i])
 
     def set_old_clocks(self, time, new_state, trigger_event, old_state):
@@ -517,28 +501,22 @@ class Compose(SimulationObject):
         Decrement all old clocks
         """
         for event in self.get_old_events(new_state, trigger_event, old_state):
-            if event.shared and self._r is not None:
-                event.tick_down(time * self._r(old_state, event))
-            else:
-                i, _event = self.find_gsmp[event][0]    # Go to default process
-                event.tick_down(time * self.nodes[i]._r(old_state[i], _event))
+
+            r = self._r(old_state, event) if event.shared and self._r is not None else None
+            parent = event.get_default_process()
+            i = self.nodes[parent]
+            parent.reduce_clock(old_state[i], event, time=time, r=r)
 
     def set_new_clocks(self, new_state, trigger_event, old_state):
         """
         Set all new clocks
         """
         for new_event in self.get_new_events(new_state, trigger_event, old_state):
-            if new_event.shared and self._f is not None:
-                new_event.set_clock(self._f(
-                    new_state, new_event,
-                    old_state, trigger_event
-                ))
-            else:
-                i, _event = self.find_gsmp[new_event][0]    # Go to default process
-                new_event.set_clock(self.nodes[i]._f(
-                    new_state[i], new_event,
-                    old_state[i], _event
-                ))
+            f = self._f(new_state, new_event, old_state, trigger_event) \
+                if new_event.shared and self._f is not None else None
+            parent = new_event.get_default_process()
+            i = self.nodes[parent]
+            parent.set_clock(new_state[i], new_event, old_state[i], trigger_event, f=f)
 
 
 class Simulator:

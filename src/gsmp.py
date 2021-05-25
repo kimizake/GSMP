@@ -22,6 +22,11 @@ class Event:
     def get_default_process(self):
         return self._node
 
+    @cache
+    def get_shared_process(self, event):
+        # Called with event where it is known that they share exactly one common process
+        return (set(self._shared_events) & set(event.get_shared_events())).pop()
+
     @property
     def shared(self):
         return self._shared
@@ -43,8 +48,10 @@ class Event:
     def __eq__(self, other):
         return isinstance(other, Event) and (
             (self._name == other._name and self._node == other._node) or
-            (self._shared and self._shared_events[other._node] == other._name) or
-            (other._shared and other._shared_events[self._node] == self._name)
+            (self._shared and
+             other._node in self._shared_events and self._shared_events[other._node] == other._name) or
+            (other._shared and
+             self._node in other._shared_events and other._shared_events[self._node] == self._name)
         )
 
     def __hash__(self):
@@ -378,11 +385,19 @@ class Compose(SimulationObject):
     _f = None
     _r = None
     _shared_events = None
-    find_gsmp = None
 
     def __init__(self, *args, shared_events=None, f=None, r=None):
+        _nodes = []
+        for arg in args:
+            # Parse arguments
+            if isinstance(arg, Gsmp):
+                _nodes.append(arg)
+            elif isinstance(arg, Compose):
+                _nodes.extend(arg.nodes)
+            else:
+                raise TypeError('Bad composition')
         # Nodes data-structure tracks sub-processes and their 'position' in the state vector
-        self.nodes = {arg: i for i, arg in enumerate(args)}
+        self.nodes = {arg: i for i, arg in enumerate(_nodes)}
         self.shared_events = shared_events
         self.override_clocks(f=f, r=r)
 
@@ -516,7 +531,20 @@ class Compose(SimulationObject):
                 if new_event.shared and self._f is not None else None
             parent = new_event.get_default_process()
             i = self.nodes[parent]
+            if new_event.shared and self._f is not None:
+                f = self._f(new_state, new_event, old_state, trigger_event)
+            elif new_event.shared:
+                # Niche edge case where trigger event is unknown to default process of new_event
+                # Need to work out the shared process between new event and trigger event
+                # And get clock setting function from there
+                _parent = trigger_event.get_shared_process(new_event)
+                j = self.nodes[_parent]
+                f = _parent._f(new_state[j], new_event, old_state[j], trigger_event)
+
             parent.set_clock(new_state[i], new_event, old_state[i], trigger_event, f=f)
+
+    def __add__(self, other):
+        return Compose(*self.nodes, other)
 
 
 class Simulator:

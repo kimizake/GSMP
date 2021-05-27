@@ -24,7 +24,7 @@ class Event:
 
     @cache
     def get_shared_process(self, event):
-        # Called with event where it is known that they share exactly one common process
+        # Called with event where it is known that they share at least one common process
         return (set(self._shared_events) & set(event.get_shared_events())).pop()
 
     @property
@@ -537,9 +537,9 @@ class Compose(SimulationObject):
             if new_event.shared and self._f is not None:
                 f = self._f(new_state, new_event, old_state, trigger_event)
             elif new_event.shared:
-                # Niche edge case where trigger event is unknown to default process of new_event
-                # Need to work out the shared process between new event and trigger event
-                # And get clock setting function from there
+                # When default clock setting is used,
+                # New event and trigger event are guaranteed to be shared by at least one process
+                # However this process is not guaranteed to be the default for either event
                 _parent = trigger_event.get_shared_process(new_event)
                 j = self.nodes[_parent]
                 f = _parent._f(new_state[j], new_event, old_state[j], trigger_event)
@@ -568,6 +568,7 @@ class Simulator:
     def _run(self, epochs):
         state_holding_times = {}
         total_time = 0
+        # event_timeline = []
         while epochs > 0:
             old_state, trigger_event, new_state, time_delta = self._generate_path()
 
@@ -576,6 +577,7 @@ class Simulator:
                 state_holding_times[old_state] = 0
             state_holding_times[old_state] += time_delta
             total_time += time_delta
+            # event_timeline.append((trigger_event.get_name(), total_time))
 
             # print("event {0} fired at time {1} ------- new state {2}".format(
             # winning_event, self.total_time, self.g.get_current_state()))
@@ -584,7 +586,8 @@ class Simulator:
         return (
             list(state_holding_times.keys()),     # observed states
             list(state_holding_times.values()),   # holding times
-            total_time                            # total simulation time
+            total_time,                           # total simulation time
+            # event_timeline                        # event timeline
         )
 
     def _generate_path(self):

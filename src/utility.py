@@ -31,7 +31,7 @@ def print_results(p=None, ys=None):
     # Create the graphs
     def graph(_y, _title):
         fig, ax = plt.subplots()
-        ax.plot(range(k), p, label='expected')
+        ax.plot(range(k), p, '--', label='expected')
         ax.plot(range(k), _y, label='actual')
         ax.set_xlabel('Number of jobs in system')
         ax.set_ylabel('Probability')

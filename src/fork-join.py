@@ -20,7 +20,10 @@ class FJ_Plugin:
     # Graphing
     _output = []
 
-    def incoming_event(self, event, process, time):
+    def incoming_event(self, data):
+        event = data['event']
+        process = data['process']
+        time = data['time']
         if event == 'com':
             self._response_times[process].append(
                 time - self._arrival_times[process].popleft()

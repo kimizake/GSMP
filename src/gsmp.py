@@ -578,7 +578,15 @@ class Simulator:
             state_holding_times[old_state] += time_delta
             total_time += time_delta
             if _plugin is not None:
-                _plugin(trigger_event.get_name(), trigger_event.get_default_process(), total_time)
+                # send transition data to plugin
+                _plugin({
+                    'old state': old_state,
+                    'new state': new_state,
+                    'event': trigger_event.get_name(),
+                    'process': trigger_event.get_default_process(),
+                    'time': total_time,
+                    'time delta': time_delta
+                })
 
             epochs -= 1
         return (

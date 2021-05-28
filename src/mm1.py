@@ -1,3 +1,4 @@
+import numpy as np
 from gsmp import Gsmp
 
 arrival = 1
@@ -61,14 +62,7 @@ if __name__ == "__main__":
         states
     ))
 
-    observed_probabilities = holding_times / total_time     # Estimate probabilities based on holding times
+    observed_probabilities = np.array(holding_times) / total_time     # Estimate probabilities based on holding times
 
-    # Make some graphs
-    from matplotlib import pyplot as plt
-    plt.plot(states, expected_probabilities, label='expected probabilities')
-    plt.plot(states, observed_probabilities, label='observed probabilities')
-    plt.xlabel('state')
-    plt.ylabel('probability')
-    plt.title('M/M/1 with traversals = {}'.format(epochs))
-    plt.legend()
-    plt.show()
+    from utility import print_results
+    print_results(p=expected_probabilities, ys=[(observed_probabilities, 'M/M/1')])

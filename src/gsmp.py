@@ -398,7 +398,7 @@ class Compose(SimulationObject):
                 raise TypeError('Bad composition')
         # Nodes data-structure tracks sub-processes and their 'position' in the state vector
         self.nodes = {arg: i for i, arg in enumerate(_nodes)}
-        self.shared_events = shared_events
+        self.shared_events = [] if shared_events is None else shared_events
         self.override_clocks(f=f, r=r)
 
     @property
@@ -554,21 +554,21 @@ class Simulator:
     def __init__(self, gsmp: SimulationObject):
         self.g = gsmp
 
-    def run(self, epochs, warmup=0):
+    def run(self, epochs, warmup=0, plugin=None):
         """
         Run a new simulation, generates sample paths through the GSMP state spaces
         :param epochs: number of event firings
         :param warmup: 'warmup' epochs
+        :param plugin: function pointer for parsing live event transitions
         :return: observed states, holding times, total simulation time
         """
         self.g.reset()
         self._run(warmup)
-        return self._run(epochs)
+        return self._run(epochs, _plugin=plugin)
 
-    def _run(self, epochs):
+    def _run(self, epochs, _plugin=None):
         state_holding_times = {}
         total_time = 0
-        # event_timeline = []
         while epochs > 0:
             old_state, trigger_event, new_state, time_delta = self._generate_path()
 
@@ -577,17 +577,14 @@ class Simulator:
                 state_holding_times[old_state] = 0
             state_holding_times[old_state] += time_delta
             total_time += time_delta
-            # event_timeline.append((trigger_event.get_name(), total_time))
-
-            # print("event {0} fired at time {1} ------- new state {2}".format(
-            # winning_event, self.total_time, self.g.get_current_state()))
+            if _plugin is not None:
+                _plugin(trigger_event.get_name(), trigger_event.get_default_process(), total_time)
 
             epochs -= 1
         return (
             list(state_holding_times.keys()),     # observed states
             list(state_holding_times.values()),   # holding times
             total_time,                           # total simulation time
-            # event_timeline                        # event timeline
         )
 
     def _generate_path(self):

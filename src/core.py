@@ -554,28 +554,39 @@ class Simulator:
     def __init__(self, gsmp: SimulationObject):
         self.g = gsmp
 
-    def run(self, epochs, warmup=0, plugin=None):
+    def run(self, until=float('inf'), epochs=float('inf'),
+            warmup_epochs=0, warmup_until=0,
+            estimate_probability=False,
+            plugin=None):
         """
         Run a new simulation, generates sample paths through the GSMP state spaces
+        :param until: simulation runtime
         :param epochs: number of event firings
-        :param warmup: 'warmup' epochs
+        :param warmup_epochs: 'warmup' epochs
+        :param warmup_until: 'warmup' time
+        :param estimate_probability: boolean for returning state probability distribution
         :param plugin: function pointer for parsing live event transitions
         :return: observed states, holding times, total simulation time
         """
         self.g.reset()
-        self._run(warmup)
-        return self._run(epochs, _plugin=plugin)
+        self._run(epochs=warmup_epochs)
+        self._run(until=warmup_until)
+        return self._run(until=until, epochs=epochs,
+                         estimate_probability=estimate_probability, _plugin=plugin)
 
-    def _run(self, epochs, _plugin=None):
-        state_holding_times = {}
+    def _run(self, until=float('inf'), epochs=float('inf'),
+             estimate_probability=False, _plugin=None):
+        if estimate_probability:
+            state_holding_times = {}
         total_time = 0
-        while epochs > 0:
+        while epochs > 0 and total_time < until:
             old_state, trigger_event, new_state, time_delta = self._generate_path()
 
             # Increment timing metrics
-            if old_state not in state_holding_times:
-                state_holding_times[old_state] = 0
-            state_holding_times[old_state] += time_delta
+            if estimate_probability:
+                if old_state not in state_holding_times:
+                    state_holding_times[old_state] = 0
+                state_holding_times[old_state] += time_delta
             total_time += time_delta
             if _plugin is not None:
                 # send transition data to plugin
@@ -589,11 +600,9 @@ class Simulator:
                 })
 
             epochs -= 1
-        return (
-            list(state_holding_times.keys()),     # observed states
-            list(state_holding_times.values()),   # holding times
-            total_time,                           # total simulation time
-        )
+        if estimate_probability:
+            return [(state, time / total_time) for state, time in state_holding_times.items()]
+        return
 
     def _generate_path(self):
         # Get old state and active events

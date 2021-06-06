@@ -1,5 +1,5 @@
 from mm1 import MM1
-from gsmp import Simulator
+from core import Simulator
 from functools import reduce
 from operator import add, and_
 from collections import deque

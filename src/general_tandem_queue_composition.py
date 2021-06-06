@@ -3,7 +3,7 @@ import numpy as np
 from itertools import repeat
 from functools import reduce
 from operator import add
-from gsmp import Simulator
+from core import Simulator
 from mm1k import MM1k
 
 k = 10              # Queue Buffer size
@@ -22,13 +22,14 @@ if __name__ == "__main__":
     network = reduce(add, queues)
     network.shared_events = [[('com', queues[i]), ('arr', queues[i + 1])] for i in range(num - 1)]
     # Generate path
-    states, holding_times, total_time = Simulator(network).run(epochs)
+    data = Simulator(network).run(epochs=epochs, estimate_probability=True)
+    states, observed_probabilities = zip(*data)
     # Project results onto grid data structure
     grid = np.zeros(shape=tuple(repeat(k + 1, times=num)))
-    for _state, _holding_time in zip(states, holding_times):
-        grid[_state] = _holding_time
+    for _state, _probability in zip(states, observed_probabilities):
+        grid[_state] = _probability
     # Use grid to evaluate individual queue probabilities
-    probabilities = [np.sum(grid, axis=tuple(filter(lambda x: x != i, range(num)))) / total_time for i in range(num)]
+    probabilities = [np.sum(grid, axis=tuple(filter(lambda x: x != i, range(num)))) for i in range(num)]
     # Plot these probabilities against the steady state results
     from utility import mmc_p, print_results
     expected_probability = mmc_p(arrival_rate / service_rate, 1, k)

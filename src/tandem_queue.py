@@ -1,4 +1,4 @@
-from gsmp import Gsmp
+from core import Gsmp
 from numpy.random import exponential
 
 k = 20

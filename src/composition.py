@@ -1,4 +1,4 @@
-from gsmp import Simulator
+from core import Simulator
 import numpy as np
 
 # Changes to these parameters must be made in the tandem_queue and mm1k files
@@ -9,14 +9,14 @@ epochs = 10000
 warmup = 0
 
 
-def get_state_probabilities(_states, _holding_times, _total_time):
+def get_state_probabilities(_states, _probabilities):
     # Map the holding times onto a plane
     grid = np.zeros(shape=(k + 1, k + 1))
-    for _state, _holding_time in zip(_states, _holding_times):
-        grid[_state] = _holding_time
+    for _state, _prob in zip(_states, _probabilities):
+        grid[_state] = _prob
 
-    first_queue_probabilities = sum(grid[i, :] for i in range(k + 1)) / _total_time     # Sum the rows
-    second_queue_probabilities = sum(grid[:, i] for i in range(k + 1)) / _total_time    # Sum the columns
+    first_queue_probabilities = sum(grid[i, :] for i in range(k + 1))     # Sum the rows
+    second_queue_probabilities = sum(grid[:, i] for i in range(k + 1))    # Sum the columns
 
     return first_queue_probabilities, second_queue_probabilities
 
@@ -38,12 +38,15 @@ if __name__ == "__main__":
     tq2 = Tandem_queue()
 
     # Run the simulations
-    cmp_states, cmp_holding_times, cmp_total_time = Simulator(tq1).run(epochs, warmup=warmup)
-    reg_states, reg_holding_times, reg_total_time = Simulator(tq2).run(epochs, warmup=warmup)
+    data1 = Simulator(tq1).run(epochs=epochs, warmup_epochs=warmup, estimate_probability=True)
+    data2 = Simulator(tq2).run(epochs=epochs, warmup_epochs=warmup, estimate_probability=True)
+
+    cmp_states, cmp_probs = zip(*data1)
+    reg_states, reg_probs = zip(*data2)
 
     # Obtain the estimated pdf for the two queues
-    y1, y2 = get_state_probabilities(cmp_states, cmp_holding_times, cmp_total_time)     # results from composition
-    y3, y4 = get_state_probabilities(reg_states, reg_holding_times, reg_total_time)     # results from regular approach
+    y1, y2 = get_state_probabilities(cmp_states, cmp_probs)     # results from composition
+    y3, y4 = get_state_probabilities(reg_states, reg_probs)     # results from regular approach
 
     # Plot the results
     from utility import mmc_p, print_results

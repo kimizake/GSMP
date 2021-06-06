@@ -1,5 +1,4 @@
-import numpy as np
-from gsmp import Gsmp
+from core import Gsmp
 
 arrival = 1
 service = 2
@@ -30,9 +29,9 @@ class MM1(Gsmp):
     def f(self, next_state, new_event, current_state, winning_event):
         from numpy.random import exponential
         if new_event == 'arr':
-            return exponential(1 / arrival)
+            return exponential(1 / self._arrival)
         else:
-            return exponential(1 / service)
+            return exponential(1 / self._service)
 
     def r(self, state, event):
         return 1
@@ -42,7 +41,12 @@ class MM1(Gsmp):
 
     def f_0(self, state, event):
         from numpy.random import exponential
-        return exponential(1 / arrival)
+        return exponential(1 / self._arrival)
+
+    def __init__(self, adjacent_states=None, arrival_rate=arrival, service_rate=service):
+        self._arrival = arrival_rate
+        self._service = service_rate
+        super().__init__(adjacent_states=adjacent_states)
 
 
 rho = arrival / service
@@ -52,17 +56,17 @@ queue = MM1(
 )
 
 if __name__ == "__main__":
-    from gsmp import Simulator
-    epochs = 10000
+    from core import Simulator
+    epochs = 1000
 
-    states, holding_times, total_time = Simulator(queue).run(epochs)    # generate results
+    data = Simulator(queue).run(epochs=epochs, estimate_probability=True)  # generate results
+
+    states, observed_probabilities = zip(*data)     # unpack data
 
     expected_probabilities = list(map(       # Expected M/M/1 probabilities
         lambda n: (1 - rho) * rho ** n,
         states
     ))
-
-    observed_probabilities = np.array(holding_times) / total_time     # Estimate probabilities based on holding times
 
     from utility import print_results
     print_results(p=expected_probabilities, ys=[(observed_probabilities, 'M/M/1')])

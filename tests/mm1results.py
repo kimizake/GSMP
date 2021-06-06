@@ -67,14 +67,14 @@ def func(util, total_time):
             )
 
     x = mm1plugin()
-    simulation.run(until=total_time, warmup_util=warmup_time, plugin=x.stream)
+    simulation.run(until=total_time, warmup_until=warmup_time, plugin=x.stream)
 
     def format_data(_data, acc):
         mean = np.mean(_data)
         return (
             mean,
             acc,
-            st.norm.interval(alpha=0.90, loc=np.mean(_data), scale=st.sem(_data))
+            st.norm.interval(alpha=0.90, loc=mean, scale=st.sem(_data))
         )
 
     return list(map(format_data, x.get(), [mean_job_count, mean_response_length, mean_waiting_time, mean_queue_length]))

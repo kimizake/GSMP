@@ -15,7 +15,7 @@ class Event:
         self._total_shared_events = 1
 
     def get_name(self, process=None):
-        if process is None and not self._shared:
+        if process is None:
             return self._name
         return self._shared_events[process]
 

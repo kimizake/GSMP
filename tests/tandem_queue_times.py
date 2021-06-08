@@ -2,11 +2,12 @@ from core import Simulator
 from mm1 import MM1
 from collections import deque
 
+import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import scipy.stats as st
 
-t = 1000
+t = 100000
 alpha = 0.95
 
 
@@ -69,7 +70,7 @@ def func(util1, util2, util3):
     simulation = Simulator(queue)
     from time import perf_counter
     start = perf_counter()
-    simulation.run(until=t, plugin=stream)
+    data = simulation.run(until=t, plugin=stream, estimate_probability=True)
     end = perf_counter()
 
     def get_res(data, s):
@@ -88,7 +89,7 @@ def func(util1, util2, util3):
         1: get_res(response_times[q1], service1),
         2: get_res(response_times[q2], service2),
         3: get_res(response_times[q3], service3)
-    }, end - start
+    }, end - start, data
 
 
 if __name__ == "__main__":
@@ -111,7 +112,7 @@ if __name__ == "__main__":
     a3 = []
 
     for util in utils:
-        res, runtime = func(util, util, util)
+        res, runtime, data = func(util, util, util)
 
         runtimes.append(runtime)
         print('done')
@@ -128,6 +129,58 @@ if __name__ == "__main__":
         m3.append(res[3][0])
         c3.append(res[3][2])
         a3.append(res[3][4])
+
+        if util in [.2, .5, .8]:
+            states, probs = zip(*data)
+            from operator import itemgetter
+            x = max(states, key=itemgetter(0))[0]
+            y = max(states, key=itemgetter(1))[1]
+            z = max(states, key=itemgetter(2))[2]
+
+            grid = np.zeros(shape=(x + 1, y + 1, z + 1))
+            for state, prob in data:
+                grid[state] = prob
+
+            probabilities = [
+                np.sum(grid, axis=(1, 2)),
+                np.sum(grid, axis=(0, 2)),
+                np.sum(grid, axis=(0, 1))
+            ]
+
+            expected = [
+                [(1 - util) * util ** n for n in range(x + 1)],
+                [(1 - util) * util ** n for n in range(y + 1)],
+                [(1 - util) * util ** n for n in range(z + 1)]
+            ]
+
+            fig1, ax1 = plt.subplots()
+            ax1.set_title('Queue 1 ' + r'$\rho$ = {0} simulation time = {1}'.format(util, t))
+            fig2, ax2 = plt.subplots()
+            ax2.set_title('Queue 2 ' + r'$\rho$ = {0} simulation time = {1}'.format(util, t))
+            fig3, ax3 = plt.subplots()
+            ax3.set_title('Queue 3 ' + r'$\rho$ = {0} simulation time = {1}'.format(util, t))
+
+            ax1.plot(range(x + 1), probabilities[0], 'b', label='actual')
+            ax1.plot(range(x + 1), expected[0], 'r--', label='expected')
+            ax1.set_xlabel('states')
+            ax1.set_ylabel('probability')
+            ax1.legend()
+
+            ax2.plot(range(y + 1), probabilities[1], 'b', label='actual')
+            ax2.plot(range(y + 1), expected[1], 'r--', label='expected')
+            ax2.set_xlabel('states')
+            ax2.set_ylabel('probability')
+            ax2.legend()
+
+            ax3.plot(range(z + 1), probabilities[2], 'b', label='actual')
+            ax3.plot(range(z + 1), expected[2], 'r--', label='expected')
+            ax3.set_xlabel('states')
+            ax3.set_ylabel('probability')
+            ax3.legend()
+
+            fig1.savefig('tandem queue results/1st pdf util={0} time={1}.png'.format(util, t))
+            fig2.savefig('tandem queue results/2nd pdf util={0} time={1}.png'.format(util, t))
+            fig3.savefig('tandem queue results/3rd pdf util={0} time={1}.png'.format(util, t))
 
     df1 = pd.DataFrame(data={
         r'$\rho$': utils,
@@ -156,7 +209,36 @@ if __name__ == "__main__":
         'runtime': runtimes
     })
 
-    # df1.to_csv("tandem queue results/Tandem queue - 1st MM1 response times {}.csv".format(t))
-    # df2.to_csv("tandem queue results/Tandem queue - 2nd MM1 response times {}.csv".format(t))
-    # df3.to_csv("tandem queue results/Tandem queue - 3rd MM1 response times {}.csv".format(t))
+    df1.to_csv("tandem queue results/Tandem queue - 1st MM1 response times {}.csv".format(t))
+    df2.to_csv("tandem queue results/Tandem queue - 2nd MM1 response times {}.csv".format(t))
+    df3.to_csv("tandem queue results/Tandem queue - 3rd MM1 response times {}.csv".format(t))
+
+    fig1, ax1 = plt.subplots()
+    ax1.set_title('Queue 1 simulation time {}'.format(t))
+    ax1.set_xlabel(r'$\rho$')
+    ax1.set_ylabel('mean response time')
+    ax1.fill_between(utils, [x[0] for x in c1], [x[1] for x in c1], color='b', alpha=.5, label='actual')
+    ax1.plot(utils, e, 'r--', label='exact')
+    ax1.legend()
+    fig1.savefig('tandem queue results/1st response time time={}.png'.format(t))
+
+    fig2, ax2 = plt.subplots()
+    ax2.set_title('Queue 2 simulation time {}'.format(t))
+    ax2.set_xlabel(r'$\rho$')
+    ax2.set_ylabel('mean response time')
+    ax2.fill_between(utils, [x[0] for x in c2], [x[1] for x in c2], color='b', alpha=.5, label='actual')
+    ax2.plot(utils, e, 'r--', label='exact')
+    ax2.legend()
+    fig2.savefig('tandem queue results/2nd response time time={}.png'.format(t))
+
+    fig3, ax3 = plt.subplots()
+    ax3.set_title('Queue 3 simulation time {}'.format(t))
+    ax3.set_xlabel(r'$\rho$')
+    ax3.set_ylabel('mean response time')
+    ax3.fill_between(utils, [x[0] for x in c3], [x[1] for x in c3], color='b', alpha=.5, label='actual')
+    ax3.plot(utils, e, 'r--', label='exact')
+    ax3.legend()
+    fig3.savefig('tandem queue results/3rd response time time={}.png'.format(t))
+
+    plt.show()
 

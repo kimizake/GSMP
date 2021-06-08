@@ -99,7 +99,7 @@ if __name__ == "__main__":
         'runtime': runtimes
     })
 
-    # response_df.to_csv('mm1 results/response times MM1 {}.csv'.format(time))
+    response_df.to_csv('mm1 results/response times MM1 {}.csv'.format(time))
 
     waiting_df = pd.DataFrame(data={
         r'$\rho$': utils,
@@ -110,4 +110,27 @@ if __name__ == "__main__":
         'runtime': runtimes
     })
 
-    # waiting_df.to_csv('mm1 results/waiting times MM1 {}.csv'.format(time))
+    waiting_df.to_csv('mm1 results/waiting times MM1 {}.csv'.format(time))
+
+    import matplotlib.pyplot as plt
+
+    fig1, ax1 = plt.subplots()
+    fig2, ax2 = plt.subplots()
+
+    ax1.fill_between(utils, [x[0] for x in rci], [x[1] for x in rci], color='b', alpha=.5, label='actual')
+    ax1.plot(utils, rexact, 'r--', label='expected')
+    ax1.set_xlabel('utilisation ' + r'$\rho$')
+    ax1.set_ylabel('mean response time')
+    ax1.set_title('M/M/1 response time with simulation time {}'.format(time))
+    ax1.legend()
+
+    ax2.fill_between(utils, [x[0] for x in wci], [x[1] for x in wci], color='b', alpha=.5, label='actual')
+    ax2.plot(utils, wexact, 'r--', label='expected')
+    ax2.set_xlabel('utilisation ' + r'$\rho$')
+    ax2.set_ylabel('mean waiting time')
+    ax2.set_title('M/M/1 waiting time with simulation time {}'.format(time))
+    ax2.legend()
+
+    fig1.savefig('mm1 results/mm1 mean response time {}.png'.format(time))
+    fig2.savefig('mm1 results/mm1 mean waiting time {}.png'.format(time))
+    plt.show()

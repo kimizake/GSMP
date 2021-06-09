@@ -1,6 +1,5 @@
 from abc import ABCMeta, abstractmethod
 import numpy as np
-from bitmap import BitMap
 from itertools import chain, filterfalse, product
 import operator
 from functools import cache
@@ -15,7 +14,7 @@ class Event:
         self._total_shared_events = 1
 
     def get_name(self, process=None):
-        if process is None:
+        if process is None or not self._shared:
             return self._name
         return self._shared_events[process]
 
@@ -128,6 +127,7 @@ class GsmpWrapper(SimulationObject):
         if not isinstance(obj, Gsmp):
             raise TypeError('wrapped object must be of type %s' % Gsmp)
         self.__gsmp__ = obj
+        self._events = {}
 
         if adjacent_states is None:
             def adjacent_states(s):
@@ -180,24 +180,33 @@ class GsmpWrapper(SimulationObject):
             r = self._r(state, event)
         return self._clock[event] / r
 
+    def get_event(self, e):
+        if e not in self._events:
+            self.set_event(e, Event(self, e))
+        return self._events[e]
+
+    def set_event(self, name, obj):
+        self._events[name] = obj
+
     @cache
     def _e(self, state):
-        return set(self.__gsmp__.e(state))
+        return set(map(self.get_event, self.__gsmp__.e(state)))
 
     def _p(self, next_state, event, old_state):
-        return self.__gsmp__.p(next_state, event, old_state)
+        return self.__gsmp__.p(next_state, event.get_name(process=self), old_state)
 
     def _f(self, next_state, new_event, old_state, trigger_event):
-        return self.__gsmp__.f(next_state, new_event, old_state, trigger_event)
+        return self.__gsmp__.f(next_state, new_event.get_name(process=self),
+                               old_state, trigger_event.get_name(process=self))
 
     def _r(self, state, event):
-        return self.__gsmp__.r(state, event)
+        return self.__gsmp__.r(state, event.get_name(process=self))
 
     def _s_0(self, state):
         return self.__gsmp__.s_0(state)
 
     def _f_0(self, state, event):
-        return self.__gsmp__.f_0(state, event)
+        return self.__gsmp__.f_0(state, event.get_name(process=self))
 
     def get_states(self):
         return self.__gsmp__.states()
@@ -373,6 +382,13 @@ class Compose(SimulationObject):
 
     @shared_events.setter
     def shared_events(self, val):
+        seen = []
+        for e in chain.from_iterable(val):
+            if e not in seen:
+                seen.append(e)
+            else:
+                raise ValueError('Duplicate shared events')
+        del seen
         self._shared_events = val
 
     def override_clocks(self, f=None, r=None):
@@ -383,22 +399,18 @@ class Compose(SimulationObject):
             self._r = lambda s, e: r(s, e.get_name())
 
     def reset(self):
-        total_events = {
-            (e.get_name(), e.get_default_process()): e
-            for e in chain.from_iterable(node.get_events() for node in self.nodes)
-        }
-
         # Configure the synchronised events to have hashing equality
         for event_mapping in self.shared_events:
             name, node = event_mapping[0]   # Take default as first one
-            e = total_events[(name, node)]
+            e = node.get_event(name)
             for _name, _node in event_mapping[1:]:
-                _e = total_events[(_name, _node)]
                 e.add_shared_event(_node, _name)
-                _node.swap_event(_e, e)
-            e.shared = True  # take e as the default for this synchronisation
-
-        del total_events
+                # replace instances in _node
+                _e = _node.get_event(_name)
+                _node.set_event(_name, e)
+                del _e
+                _node._e.cache_clear()
+            e.shared = True
 
         for node in self.nodes:
             node.reset()

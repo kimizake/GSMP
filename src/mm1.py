@@ -1,4 +1,5 @@
 from core import Gsmp
+from numpy.random import exponential
 
 arrival = 1
 service = 2
@@ -27,7 +28,6 @@ class MM1(Gsmp):
             return int(next_state == current_state - 1)
 
     def f(self, next_state, new_event, current_state, winning_event):
-        from numpy.random import exponential
         if new_event == 'arr':
             return exponential(1 / self._arrival)
         else:
@@ -40,12 +40,14 @@ class MM1(Gsmp):
         return int(state == 0)
 
     def f_0(self, state, event):
-        from numpy.random import exponential
         return exponential(1 / self._arrival)
 
     def __init__(self, adjacent_states=None, arrival_rate=arrival, service_rate=service):
         self._arrival = arrival_rate
         self._service = service_rate
+        if adjacent_states is None:
+            def adjacent_states(s):
+                return [1] if s == 0 else [s - 1, s + 1]
         super().__init__(adjacent_states=adjacent_states)
 
 

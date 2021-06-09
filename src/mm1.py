@@ -42,13 +42,19 @@ class MM1(Gsmp):
     def f_0(self, state, event):
         return exponential(1 / self._arrival)
 
-    def __init__(self, adjacent_states=None, arrival_rate=arrival, service_rate=service):
+    def __init__(self, adjacent_states=None, arrival_rate=arrival, service_rate=service, name=None):
         self._arrival = arrival_rate
         self._service = service_rate
+        self._name = name
         if adjacent_states is None:
             def adjacent_states(s):
                 return [1] if s == 0 else [s - 1, s + 1]
         super().__init__(adjacent_states=adjacent_states)
+
+    def __repr__(self):
+        if self._name is None:
+            return hex(id(self))
+        return self._name
 
 
 rho = arrival / service

@@ -7,7 +7,7 @@ import scipy.stats as st
 
 alpha = 0.95
 arrival = 1
-batches = 1000
+batches = 100
 accuracy = 0.1
 
 
@@ -34,7 +34,7 @@ def func(util, total_time, warmup_time):
         _next_sample_time = np.random.rand() * interval_size
 
         def stream(self, _data):
-            state = _data['new state']
+            state = _data['old state']
             t = _data['time']
 
             if t < self._next_sample_time:
@@ -76,18 +76,18 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
 
     fig1, ax1 = plt.subplots()
-    ax1.set_title('M/M/1 mean job count with {} batches'.format(batches))
+    ax1.set_title('M/M/1 mean population with {} batches'.format(batches))
     ax1.set_xlabel('utilisation - ' + r'$\rho$')
-    ax1.set_ylabel('job count')
+    ax1.set_ylabel('Population size')
     mean_job_data = []
     expected_job_data = []
     lower_job_data = []
     upper_job_data = []
 
     fig4, ax4 = plt.subplots()
-    ax4.set_title('M/M/1 mean queueing time with {} batches'.format(batches))
-    ax4.set_xlabel('utilisation - ' + r'$\rho$')
-    ax4.set_ylabel('queue length')
+    ax4.set_title('M/M/1 mean queue length with {} batches'.format(batches))
+    ax4.set_xlabel(r'$\rho$')
+    ax4.set_ylabel('Queue length')
     mean_queue_data = []
     expected_queue_data = []
     lower_queue_data = []
@@ -109,16 +109,14 @@ if __name__ == "__main__":
         upper_queue_data.append(queue_data[2][1])
 
     ax1.fill_between(utils, lower_job_data, upper_job_data, color='b', alpha=.5, label='actual')
-    # ax1.plot(utils, mean_job_data, 'b', label='actual')
-    ax1.plot(utils, expected_job_data, 'r--', label='expected')
+    ax1.plot(utils, expected_job_data, 'r--', label='steady state')
     ax1.legend()
 
     ax4.fill_between(utils, lower_queue_data, upper_queue_data, color='b', alpha=.5, label='actual')
-    # ax4.plot(utils, mean_queue_data, 'b', label='actual')
-    ax4.plot(utils, expected_queue_data, 'r--', label='expected')
+    ax4.plot(utils, expected_queue_data, 'r--', label='steady state')
     ax4.legend()
 
-    fig1.savefig("mm1 results/(new state) mm1 mean job batches {}.png".format(batches))
-    fig4.savefig("mm1 results/(new state) mm1 mean queue length batches {}.png".format(batches))
+    fig1.savefig("mm1 results/mm1 mean job batches {}.png".format(batches))
+    fig4.savefig("mm1 results/mm1 mean queue length batches {}.png".format(batches))
     plt.show()
 

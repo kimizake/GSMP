@@ -122,27 +122,19 @@ class GsmpWrapper(SimulationObject):
     __gsmp__ = None
     _events = None
     _current_state = None
+    _clock = None
 
     def __init__(self, obj, adjacent_states=None):
-        # TODO: add a save feature after pre-processing
-
         if not isinstance(obj, Gsmp):
             raise TypeError('wrapped object must be of type %s' % Gsmp)
         self.__gsmp__ = obj
 
-        # Construct state and event objects
-        self._events = [Event(self, name) for name in self.__gsmp__.events()]
-
-        self._clock = None
-        self._bitmap = None
-
-        if adjacent_states is not None:
-            self._get_adj_states = adjacent_states
-        else:
-            # The default get_adjacent_state function has to iterate over the entire state space and event set
-            self._get_adj_states = lambda s: {
-                _s for _s in self.get_states() for e in self._bitmap.get(self._e(s)) if self._p(_s, e, s) != 0
-            }
+        if adjacent_states is None:
+            def adjacent_states(s):
+                return {
+                    _s for _s in self.get_states() for e in self._e(s) if self._p(_s, e, s) != 0
+                }
+        self._get_adj_states = adjacent_states
 
     def reset(self):
         # choose initial state
@@ -166,10 +158,7 @@ class GsmpWrapper(SimulationObject):
 
         if self._clock:
             del self._clock
-        if self._bitmap:
-            del self._bitmap
         self._clock = {}
-        self._bitmap = BitMap(self._events)
         # set trackers
         self._current_state = initial_state
         # set initial clocks
@@ -191,32 +180,24 @@ class GsmpWrapper(SimulationObject):
             r = self._r(state, event)
         return self._clock[event] / r
 
-    def swap_event(self, original, new):
-        # replace original in event list
-        i = self._events.index(original)
-        self._events[i] = new
-        # clear memory
-        del original
-
     @cache
     def _e(self, state):
-        return self._bitmap.format([Event(self, name) for name in self.__gsmp__.e(state)])
+        return set(self.__gsmp__.e(state))
 
     def _p(self, next_state, event, old_state):
-        return self.__gsmp__.p(next_state, event.get_name(process=self), old_state)
+        return self.__gsmp__.p(next_state, event, old_state)
 
     def _f(self, next_state, new_event, old_state, trigger_event):
-        return self.__gsmp__.f(next_state, new_event.get_name(process=self),
-                               old_state, trigger_event.get_name(process=self))
+        return self.__gsmp__.f(next_state, new_event, old_state, trigger_event)
 
     def _r(self, state, event):
-        return self.__gsmp__.r(state, event.get_name(process=self))
+        return self.__gsmp__.r(state, event)
 
     def _s_0(self, state):
         return self.__gsmp__.s_0(state)
 
     def _f_0(self, state, event):
-        return self.__gsmp__.f_0(state, event.get_name(process=self))
+        return self.__gsmp__.f_0(state, event)
 
     def get_states(self):
         return self.__gsmp__.states()
@@ -225,32 +206,17 @@ class GsmpWrapper(SimulationObject):
     def get_adj_states(self, state):
         return list(self._get_adj_states(state))
 
-    def get_events(self):
-        return self._events
-
     def get_current_state(self):
         return self._current_state
 
     def get_active_events(self, state):
-        return self._bitmap.get(self._e(state))
+        return self._e(state)
 
     def get_old_events(self, new_state, trigger_event, old_state):
-        e1 = self._e(old_state)
-        try:
-            e1 -= self._bitmap.positions[trigger_event]
-        except KeyError:
-            pass
-        e2 = self._e(new_state)
-        return self._bitmap.get(e1 & e2)
+        return self._e(new_state) & (self._e(old_state) - {trigger_event})
 
     def get_new_events(self, new_state, trigger_event, old_state):
-        e1 = self._e(old_state)
-        try:
-            e1 -= self._bitmap.positions[trigger_event]
-        except KeyError:
-            pass
-        e2 = self._e(new_state)
-        return self._bitmap.get(e2 - (e1 & e2))
+        return self._e(new_state) - ((self._e(old_state) - {trigger_event}) & self._e(new_state))
 
     def get_new_state(self, o, e):
         adj_states = self.get_adj_states(o)
@@ -566,7 +532,7 @@ class Simulator:
         :param warmup_until: 'warmup' time
         :param estimate_probability: boolean for returning state probability distribution
         :param plugin: function pointer for parsing live event transitions
-        :return: observed states, holding times, total simulation time
+        :return: [(observed state, probability)]
         """
         self.g.reset()
         self._run(epochs=warmup_epochs)

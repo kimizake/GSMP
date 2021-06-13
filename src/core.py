@@ -163,6 +163,9 @@ class GsmpWrapper(SimulationObject):
         for event in self.get_active_events(initial_state):
             self.set_clock(initial_state, event, None, None, f=self._f_0(initial_state, event))
 
+    def get_clock(self, event):
+        return self._clock[event]
+
     def set_clock(self, next_state, new_event, old_state, trigger_event, f=None):
         if f is None:
             f = self._f(next_state, new_event, old_state, trigger_event)
@@ -357,9 +360,10 @@ class Compose(SimulationObject):
 
     _f = None
     _r = None
+    _f_0 = None
     _shared_events = None
 
-    def __init__(self, *args, shared_events=None, f=None, r=None):
+    def __init__(self, *args, shared_events=None, f=None, r=None, f_0=None):
         _nodes = []
         for arg in args:
             # Parse arguments
@@ -372,7 +376,9 @@ class Compose(SimulationObject):
         # Nodes data-structure tracks sub-processes and their 'position' in the state vector
         self.nodes = {arg: i for i, arg in enumerate(_nodes)}
         self.shared_events = [] if shared_events is None else shared_events
-        self.override_clocks(f=f, r=r)
+        self.f = f
+        self.r = r
+        self._f_0 = f_0
 
     @property
     def shared_events(self):
@@ -389,12 +395,31 @@ class Compose(SimulationObject):
         del seen
         self._shared_events = val
 
-    def override_clocks(self, f=None, r=None):
-        # Override clock functions.
-        if f:
-            self._f = lambda _s, _e, s, e: f(_s, _e.get_name(), s, e.get_name())
-        if r:
-            self._r = lambda s, e: r(s, e.get_name())
+    @property
+    def f(self):
+        return self._f
+
+    @f.setter
+    def f(self, func):
+        self._f = lambda _s, _e, s, e: func(
+            _s, (_e.get_name(), _e.get_default_process()), s, (e.get_name(), e.get_default_process())
+        )
+
+    @property
+    def r(self):
+        return self._r
+
+    @r.setter
+    def r(self, func):
+        self._r = lambda s, e: func(s, (e.get_name(), e.get_default_process()))
+
+    @property
+    def f_0(self):
+        return self._f_0
+
+    @f_0.setter
+    def f_0(self, func):
+        self._f_0 = lambda s, e: func(s, (e.get_name(), e.get_default_process()))
 
     def reset(self):
         # Configure the synchronised events to have hashing equality
@@ -412,6 +437,13 @@ class Compose(SimulationObject):
 
         for node in self.nodes:
             node.reset()
+
+        for event in self.get_active_events(self.get_current_state()):
+            # set initial clocks of shared events
+            if event.shared and self.f_0 is not None:
+                parent = event.get_default_process()
+                val = self.f_0(self.get_current_state(), event)
+                parent.set_clock(None, event, None, None, f=val)
 
     def get_states(self):
         # This takes the cartesian product of the states, therefore it is really slow
@@ -476,8 +508,8 @@ class Compose(SimulationObject):
         """
         def get_time_deltas(event):
             parent = event.get_default_process()
-            if event.shared and self._r is not None:
-                return event, parent.get_clock(event) / self._r(o, event)
+            if event.shared and self.r is not None:
+                return event, parent.get_clock(event) / self.r(o, event)
             return event, parent.time_delta(o[self.nodes[parent]], event)
 
         time_deltas = list(map(get_time_deltas, es))  # calculate how long each active event spends in current state
@@ -496,7 +528,7 @@ class Compose(SimulationObject):
         """
         for event in self.get_old_events(new_state, trigger_event, old_state):
 
-            r = self._r(old_state, event) if event.shared and self._r is not None else None
+            r = self.r(old_state, event) if event.shared and self.r is not None else None
             parent = event.get_default_process()
             i = self.nodes[parent]
             parent.reduce_clock(old_state[i], event, time=time, r=r)
@@ -506,12 +538,12 @@ class Compose(SimulationObject):
         Set all new clocks
         """
         for new_event in self.get_new_events(new_state, trigger_event, old_state):
-            f = self._f(new_state, new_event, old_state, trigger_event) \
-                if new_event.shared and self._f is not None else None
+            f = self.f(new_state, new_event, old_state, trigger_event) \
+                if new_event.shared and self.f is not None else None
             parent = new_event.get_default_process()
             i = self.nodes[parent]
-            if new_event.shared and self._f is not None:
-                f = self._f(new_state, new_event, old_state, trigger_event)
+            if new_event.shared and self.f is not None:
+                f = self.f(new_state, new_event, old_state, trigger_event)
             elif new_event.shared:
                 # When default clock setting is used,
                 # New event and trigger event are guaranteed to be shared by at least one process

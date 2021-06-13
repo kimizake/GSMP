@@ -43,11 +43,19 @@ class MM1k(Gsmp):
         return exponential(self._avg_arrival_time)
 
     def __repr__(self):
+        if self.name is None:
+            return hex(id(self))
         return str(self.name)
 
-    def __init__(self, name, _k=k, _arrival_rate=arrival_rate, _service_rate=service_rate):
+    def __init__(self, name=None, k=k, _arrival_rate=arrival_rate, _service_rate=service_rate):
         self.name = name
-        self._k = _k
+        self._k = k
         self._avg_arrival_time = 1 / _arrival_rate
         self._avg_service_time = 1 / _service_rate
         super().__init__()
+
+
+if __name__ == "__main__":
+    from core import Simulator
+    res = Simulator(MM1k()).run(until=1000, estimate_probability=True)
+    print(res)

@@ -1,8 +1,8 @@
 import matplotlib.pyplot as plt
 
 from core import Simulator
-from mm1 import MM1
-from mm1ps import MM1PS
+from examples.mm1 import MM1
+from examples.mm1ps import MM1PS
 
 arrival = 1
 

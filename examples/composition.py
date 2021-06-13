@@ -5,7 +5,7 @@ import numpy as np
 k = 20
 arrival_rate = 1
 service_rate = 2
-epochs = 10000
+epochs = 1000
 warmup = 0
 
 
@@ -38,8 +38,8 @@ if __name__ == "__main__":
     tq2 = Tandem_queue()
 
     # Run the simulations
-    data1 = Simulator(tq1).run(epochs=epochs, warmup_epochs=warmup, estimate_probability=True)
     data2 = Simulator(tq2).run(epochs=epochs, warmup_epochs=warmup, estimate_probability=True)
+    data1 = Simulator(tq1).run(epochs=epochs, warmup_epochs=warmup, estimate_probability=True)
 
     cmp_states, cmp_probs = zip(*data1)
     reg_states, reg_probs = zip(*data2)

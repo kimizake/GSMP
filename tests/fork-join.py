@@ -1,10 +1,10 @@
-from mm1 import MM1
+from examples.mm1 import MM1
 from core import Simulator
 from functools import reduce
 from operator import add, and_
 from collections import deque
 
-K = 10               # Number of queues
+K = 2               # Number of queues
 simtime = 10000     # runs
 
 util = 0.3
@@ -90,7 +90,7 @@ if __name__ == "__main__":
     plt.ylabel('mean job response time')
     plt.xlabel('time')
     plt.title('Response time of Fork-join system with {} M/M/1 server queues'.format(K) + r' $\rho={}$'.format(util))
-    plt.savefig('./fork join results/{0}queues_{1}.png'.format(K, util))
+    # plt.savefig('./fork join results/{0}queues_{1}.png'.format(K, util))
 
     plt.show()
 
@@ -110,5 +110,5 @@ if __name__ == "__main__":
         '{}% confidence interval'.format(100 * 0.99): [ci],
         'accuracy (%)': [acc],
     })
-    df.to_csv('fork join results/{0}queue_{1}.csv'.format(K, util))
+    # df.to_csv('fork join results/{0}queue_{1}.csv'.format(K, util))
 

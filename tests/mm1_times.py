@@ -1,6 +1,6 @@
 from core import Simulator
 from collections import deque
-from mm1 import MM1
+from examples.mm1 import MM1
 
 arrival = 1
 time = 1000
@@ -10,7 +10,6 @@ def get_results(util):
     service = arrival / util
 
     queue = MM1(
-        adjacent_states=lambda s: [1] if s == 0 else [s - 1, s + 1],
         service_rate=service, arrival_rate=arrival
     )
 

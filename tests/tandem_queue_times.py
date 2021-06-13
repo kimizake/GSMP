@@ -1,5 +1,5 @@
 from core import Simulator
-from mm1 import MM1
+from examples.mm1 import MM1
 from collections import deque
 
 import numpy as np

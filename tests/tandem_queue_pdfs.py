@@ -1,5 +1,5 @@
 from core import Simulator
-from mm1 import MM1
+from examples.mm1 import MM1
 
 import matplotlib.pyplot as plt
 import numpy as np

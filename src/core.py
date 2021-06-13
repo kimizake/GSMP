@@ -11,7 +11,6 @@ class Event:
         self._node = node
         self._shared = False
         self._shared_events = {node: name}
-        self._total_shared_events = 1
 
     def get_name(self, process=None):
         if process is None or not self._shared:
@@ -36,13 +35,12 @@ class Event:
 
     def add_shared_event(self, node, name):
         self._shared_events[node] = name
-        self._total_shared_events += 1
 
     def get_shared_events(self):
         return self._shared_events
 
     def total_shared_events(self):
-        return self._total_shared_events
+        return len(self._shared_events)
 
     def __eq__(self, other):
         return isinstance(other, Event) and (

@@ -1,4 +1,4 @@
-from src.mm1 import MM1
+from examples.mm1 import MM1
 from src.core import Simulator
 
 import numpy as np

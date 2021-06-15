@@ -1,9 +1,7 @@
 from core import Gsmp
 from numpy.random import exponential
 
-k = 20
-arrival_rate = 1
-service_rate = 2
+k, arrival_rate, service_rate = 20, 1, 2
 
 
 class MM1k(Gsmp):
@@ -11,24 +9,24 @@ class MM1k(Gsmp):
         return range(self._k + 1)
 
     def events(self):
-        return ['arr', 'com']
+        return ["arr", "com"]
 
     def e(self, s):
         es = []
         if s < self._k:
-            es.append('arr')
+            es.append("arr")
         if s > 0:
-            es.append('com')
+            es.append("com")
         return es
 
     def p(self, _s, e, s):
-        if e == 'arr':
+        if e == "arr":
             return int(s + 1 == _s)
         else:
             return int(s - 1 == _s)
 
     def f(self, _s, _e, s, e):
-        if _e == 'arr':
+        if _e == "arr":
             return exponential(self._avg_arrival_time)
         else:
             return exponential(self._avg_service_time)
@@ -47,15 +45,10 @@ class MM1k(Gsmp):
             return hex(id(self))
         return str(self.name)
 
-    def __init__(self, name=None, k=k, _arrival_rate=arrival_rate, _service_rate=service_rate):
+    def __init__(self, name=None, k=k,
+                 _arrival_rate=arrival_rate, _service_rate=service_rate):
         self.name = name
         self._k = k
         self._avg_arrival_time = 1 / _arrival_rate
         self._avg_service_time = 1 / _service_rate
         super().__init__()
-
-
-if __name__ == "__main__":
-    from core import Simulator
-    res = Simulator(MM1k()).run(until=1000, estimate_probability=True)
-    print(res)

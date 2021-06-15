@@ -13,32 +13,32 @@ class MM1PS(Gsmp):
             s += 1
 
     def events(self):
-        yield 'arr'
+        yield "arr"
         s = 1
         while True:
-            yield 'com {}'.format(s)
+            yield "com {}".format(s)
             s += 1
 
     def e(self, s):
         if s == 0:
-            return ['arr']
+            return ["arr"]
         else:
-            return ['arr'] + ['com {}'.format(i + 1) for i in range(s)]
+            return ["arr"] + ["com {}".format(i + 1) for i in range(s)]
 
     def p(self, _s, e, s):
-        if e == 'arr':
+        if e == "arr":
             return int(_s == s + 1)
         else:
             return int(_s == s - 1)
 
     def f(self, _s, _e, s, e):
-        if _e == 'arr':
+        if _e == "arr":
             return exponential(1 / self._arrival)
         else:
             return exponential(1 / self._service)
 
     def r(self, s, e):
-        if e == 'arr':
+        if e == "arr":
             return 1
         else:
             return 1 / s
@@ -49,7 +49,10 @@ class MM1PS(Gsmp):
     def f_0(self, s, e):
         return exponential(1 / self._arrival)
 
-    def __init__(self, service_rate=service, arrival_rate=arrival, adjacent_states=None):
+    def __init__(self,
+                 service_rate=service,
+                 arrival_rate=arrival,
+                 adjacent_states=None):
         if adjacent_states is None:
             def adjacent_states(n):
                 return [1] if n == 0 else [n - 1, n + 1]

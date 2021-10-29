@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Diagram>
+  <ID>Python</ID>
+  <OriginalElement>#/Users/mikiivanovic/PycharmProjects/GSMP/src/core.py</OriginalElement>
+  <nodes>
+    <node x="1095.0" y="292.0">abc.ABCMeta</node>
+    <node x="0.0" y="650.0">core.Simulator</node>
+    <node x="847.5" y="889.0">core.GsmpWrapper</node>
+    <node x="667.75" y="0.0">typing.Hashable</node>
+    <node x="965.0" y="584.0">core.SimulationObject</node>
+    <node x="1082.0" y="1524.0">core.Gsmp</node>
+    <node x="611.25" y="105.0">object</node>
+  </nodes>
+  <notes />
+  <edges>
+    <edge source="object" target="typing.Hashable" relationship="INTERFACE">
+      <point x="0.0" y="-214.5" />
+      <point x="0.0" y="27.5" />
+    </edge>
+    <edge source="core.GsmpWrapper" target="core.SimulationObject" relationship="REALIZATION">
+      <point x="0.0" y="-291.5" />
+      <point x="0.0" y="126.5" />
+    </edge>
+    <edge source="core.Gsmp" target="core.GsmpWrapper" relationship="REALIZATION">
+      <point x="-66.5" y="-126.5" />
+      <point x="1148.5" y="1498.0" />
+      <point x="1089.0" y="1498.0" />
+      <point x="0.0" y="291.5" />
+    </edge>
+    <edge source="core.Simulator" target="object" relationship="REALIZATION">
+      <point x="0.0" y="-60.5" />
+      <point x="472.5" y="559.0" />
+      <point x="749.75" y="559.0" />
+      <point x="0.0" y="214.5" />
+    </edge>
+    <edge source="core.Gsmp" target="abc.ABCMeta" relationship="INSTANCEOF">
+      <point x="66.5" y="-126.5" />
+      <point x="1281.5" y="1498.0" />
+      <point x="1341.0" y="1498.0" />
+      <point x="1341.0" y="559.0" />
+      <point x="1246.0" y="559.0" />
+      <point x="0.0" y="27.5" />
+    </edge>
+    <edge source="core.SimulationObject" target="abc.ABCMeta" relationship="INSTANCEOF">
+      <point x="62.0" y="-126.5" />
+      <point x="1151.0" y="559.0" />
+      <point x="1246.0" y="559.0" />
+      <point x="0.0" y="27.5" />
+    </edge>
+    <edge source="core.SimulationObject" target="object" relationship="REALIZATION">
+      <point x="-62.0" y="-126.5" />
+      <point x="1027.0" y="559.0" />
+      <point x="749.75" y="559.0" />
+      <point x="0.0" y="214.5" />
+    </edge>
+  </edges>
+  <settings layout="Hierarchic" zoom="1.0415887543358922" showDependencies="false" x="1152.284450003177" y="1379.42351757034" />
+  <SelectedNodes>
+    <node>object</node>
+  </SelectedNodes>
+  <Categories>
+    <Category>Methods</Category>
+  </Categories>
+</Diagram>
+

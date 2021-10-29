@@ -1,0 +1,8 @@
+ncalls ,tottime,percall,cumtime,percall,filename:lineno(function)
+99933  ,0.934  ,0.000  ,3.496  ,0.000  ,core.py:452(get\_current\_state)
+199865 ,0.592  ,0.000  ,45.691 ,0.000  ,core.py:472(get\_active\_events)
+99932  ,2.468  ,0.000  ,33.193 ,0.000  ,core.py:502(choose\_winning\_event)
+99932  ,1.405  ,0.000  ,10.353 ,0.000  ,core.py:489(get\_new\_state)
+99932  ,8.530  ,0.000  ,66.029 ,0.001  ,core.py:525(set\_old\_clocks)
+99932  ,0.524  ,0.000  ,54.580 ,0.001  ,core.py:536(set\_new\_clocks)
+99932  ,1.580  ,0.000  ,2.524  ,0.000  ,core.py:518(set\_current\_state)

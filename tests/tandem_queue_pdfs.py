@@ -79,7 +79,7 @@ def collect_data(util):
     ]
 
     fig1, ax1 = plt.subplots()
-    ax1.set_xlabel(r'$\rho$')
+    ax1.set_xlabel('State')
     ax1.set_ylabel('Probability')
     ax1.set_title('Queue 1, time = {}'.format(t))
     l1, u1 = zip(*ci1)
@@ -88,7 +88,7 @@ def collect_data(util):
     ax1.legend()
 
     fig2, ax2 = plt.subplots()
-    ax2.set_xlabel(r'$\rho$')
+    ax2.set_xlabel('State')
     ax2.set_ylabel('Probability')
     ax2.set_title('Queue 2, time = {}'.format(t))
     l2, u2 = zip(*ci2)
@@ -97,7 +97,7 @@ def collect_data(util):
     ax2.legend()
 
     fig3, ax3 = plt.subplots()
-    ax3.set_xlabel(r'$\rho$')
+    ax3.set_xlabel('State')
     ax3.set_ylabel('Probability')
     ax3.set_title('Queue 3, time = {}'.format(t))
     l3, u3 = zip(*ci3)

@@ -7,15 +7,30 @@ matplotlib==3.3.4
 more-itertools==8.4.0
 numpy==1.20.1
 packaging==20.4
+<<<<<<< HEAD
 pandas==1.2.4
+=======
+<<<<<<< HEAD
+=======
+pandas==1.2.4
+>>>>>>> testing
+>>>>>>> master
 Pillow==8.1.2
 pluggy==0.13.1
 py==1.9.0
 pyparsing==2.4.7
 pytest==6.0.0
 python-dateutil==2.8.1
+<<<<<<< HEAD
 pytz==2021.1
 scipy==1.6.3
+=======
+<<<<<<< HEAD
+=======
+pytz==2021.1
+scipy==1.6.3
+>>>>>>> testing
+>>>>>>> master
 six==1.15.0
 toml==0.10.1
 wcwidth==0.2.5
